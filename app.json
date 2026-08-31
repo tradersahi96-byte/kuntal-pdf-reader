@@ -2,9 +2,10 @@
   "expo": {
     "name": "Kuntal PDF Reader",
     "slug": "kuntal-pdf-reader",
-    "version": "3.0.0",
+    "version": "5.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "android": {
       "package": "com.kuntal.pdfreader",
       "permissions": []

@@ -1,30 +1,9 @@
-# Kuntal PDF Reader V4
+# Kuntal PDF Reader V5
 
-Premium UI refresh for the Expo SDK 53 native PDF reader.
+Premium UI and smoother native PDF page navigation.
 
-## Reader features
-- Real native PDF rendering
-- Pinch/double-tap zoom
-- Zoom +/- and reset
-- Page count and direct page jump
-- Previous/next page
-- Remembers last reading page
-- Page bookmarks + bookmark list
-- Full-screen reading
-- PDF information panel
-- Share PDF
-- Recent PDF search
-- Rename and delete recent entries
-- Dark mode
-- Android back handling
-- PDF rendering error handling
+Features: premium home, icon-based Quick Tools, recent library, bookmarks, last-page memory, horizontal paged viewer, page grid, dark mode, share, document info, editor workspace and PDF tool architecture.
 
-## PDF Tools
-- Merge multiple PDFs into one
-- Extract the currently displayed page as a new PDF
-- Rotate the current page 90 degrees and export
-- Create a complete PDF copy
-- Android print dialog
+Important: true editing of existing PDF text with exact embedded-font preservation requires a native PDF content-editing engine. This build intentionally does not fake that capability.
 
-## Build
-This project uses `react-native-pdf` and requires an EAS/custom native build, not Expo Go.
+Build: `npm install` then `npx eas build -p android --profile production`.
