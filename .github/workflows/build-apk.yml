@@ -23,8 +23,8 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: Initialize EAS project
-        run: eas init --account tradersahi96-byte --non-interactive
+            - name: Initialize EAS project
+        run: eas init --account yashjat --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
