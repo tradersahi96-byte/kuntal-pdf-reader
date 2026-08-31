@@ -1,24 +1,44 @@
 {
   "expo": {
-    "name": "Kuntal PDF Reader",
-    "slug": "kuntal-pdf-reader",
-    "version": "5.0.0",
+    "name": "Kuntal Documents",
+    "slug": "kuntal-documents",
+    "version": "9.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./icon.png",
     "android": {
-      "package": "com.kuntal.pdfreader",
-      "permissions": []
+      "package": "com.kuntal.documents",
+      "permissions": [
+        "CAMERA"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./icon.png",
+        "backgroundColor": "#111827"
+      }
     },
     "plugins": [
+      "expo-camera",
       "@config-plugins/react-native-blob-util",
-      "@config-plugins/react-native-pdf",
-      "expo-document-picker"
+      "@config-plugins/react-native-pdf"
     ],
     "extra": {
-      "eas": {
-        "projectId": "a570a555-2aa1-4d13-9b57-3069bca6c664"
-      }
+      "versionName": "V9.1",
+      "features": [
+        "native-pdf-viewer",
+        "scanner-auto-manual",
+        "multi-page-scan",
+        "image-enhancement",
+        "ocr",
+        "merge",
+        "split",
+        "rotate",
+        "annotations",
+        "signature",
+        "watermark",
+        "share",
+        "bookmarks",
+        "pdf-info"
+      ]
     }
   }
 }

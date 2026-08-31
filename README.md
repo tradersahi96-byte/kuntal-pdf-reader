@@ -1,9 +1,31 @@
-# Kuntal PDF Reader V5
+# Kuntal Documents V9.1
 
-Premium UI and smoother native PDF page navigation.
+Premium Expo 53 Android PDF/scanner workspace.
 
-Features: premium home, icon-based Quick Tools, recent library, bookmarks, last-page memory, horizontal paged viewer, page grid, dark mode, share, document info, editor workspace and PDF tool architecture.
+## Included
+- Native PDF viewer with page count and navigation
+- Smooth zoom/pan through react-native-pdf
+- Open and share PDF
+- Auto/Manual scanner camera flow
+- Multi-page scan, reorder, delete, add page
+- Gallery to PDF
+- Document/B&W/Grayscale/Clean image presets
+- Merge PDFs
+- Extract current page as a PDF
+- Rotate current PDF page
+- OCR using native ML Kit
+- Watermark and signature text layers for generated PDFs
+- PDF quick-edit/annotation panel
+- PDF information panel and bookmarks UI
+- Premium home UI with Quick Tools
 
-Important: true editing of existing PDF text with exact embedded-font preservation requires a native PDF content-editing engine. This build intentionally does not fake that capability.
+## Build
+Use an EAS/custom native Android build. Expo Go is not sufficient because the app uses native PDF and ML Kit modules.
 
-Build: `npm install` then `npx eas build -p android --profile production`.
+Recommended:
+
+```bash
+npm install
+npx expo prebuild --clean
+npx eas build -p android --profile production
+```
