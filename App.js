@@ -582,7 +582,7 @@ export default function App() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.brand, theme.text]}>Kuntal PDF Reader</Text>
-          <Text style={[styles.subtitle, theme.muted]}>Version 3.0</Text>
+          <Text style={[styles.subtitle, theme.muted]}>Version 4.0</Text>
         </View>
         <Pressable onPress={() => setSettings(true)} style={styles.iconBtn}>
           <Text style={[styles.icon, theme.text]}>⚙</Text>
@@ -590,19 +590,37 @@ export default function App() {
       </View>
 
       <View style={styles.content}>
-        <Pressable onPress={pickPdf} style={styles.openButton}>
-          <Text style={styles.openButtonText}>＋  Open PDF</Text>
-        </Pressable>
+        <View style={styles.heroCard}>
+          <View style={styles.heroGlow} />
+          <View style={styles.heroTop}>
+            <View style={styles.logoMark}><Text style={styles.logoMarkText}>K</Text></View>
+            <View style={styles.heroPill}><Text style={styles.heroPillText}>PDF • READER</Text></View>
+          </View>
+          <Text style={styles.heroTitle}>Your PDFs, beautifully organized.</Text>
+          <Text style={styles.heroSubtitle}>Read, manage, share and work with documents in one clean workspace.</Text>
+          <Pressable onPress={pickPdf} style={styles.openButton}>
+            <Text style={styles.openButtonText}>＋  Open PDF</Text>
+          </Pressable>
+        </View>
 
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search recent PDF names"
-          placeholderTextColor={dark ? "#9ca3af" : "#777"}
-          style={[styles.search, theme.input]}
-        />
+        <View style={[styles.searchWrap, theme.card]}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search your documents"
+            placeholderTextColor={dark ? "#9ca3af" : "#8a8f98"}
+            style={[styles.search, theme.searchInput]}
+          />
+        </View>
 
-        <Text style={[styles.section, theme.text]}>Recent PDFs</Text>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.section, theme.text]}>Recent PDFs</Text>
+            <Text style={[styles.sectionHint, theme.muted]}>Pick up where you left off</Text>
+          </View>
+          <View style={styles.countPill}><Text style={styles.countText}>{filtered.length}</Text></View>
+        </View>
 
         {filtered.length === 0 ? (
           <View style={[styles.empty, theme.card]}>
@@ -618,24 +636,22 @@ export default function App() {
             keyExtractor={x => x.id}
             renderItem={({ item }) => (
               <View style={[styles.row, theme.card]}>
-                <Text style={styles.pdfBadge}>PDF</Text>
-                <Pressable onPress={() => openRecent(item)} style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={[styles.fileName, theme.text]}>
-                    {item.name}
-                  </Text>
-                  <Text style={theme.muted}>
-                    Page {item.lastPage || 1} • {new Date(item.addedAt).toLocaleDateString()}
-                  </Text>
+                <Pressable onPress={() => openRecent(item)} style={styles.rowMain}>
+                  <View style={styles.pdfIconBox}><Text style={styles.pdfIconText}>PDF</Text></View>
+                  <View style={styles.fileMeta}>
+                    <Text numberOfLines={1} style={[styles.fileName, theme.text]}>
+                      {item.name}
+                    </Text>
+                    <Text style={[styles.fileSub, theme.muted]}>
+                      Page {item.lastPage || 1}  •  {new Date(item.addedAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={[styles.chevron, theme.muted]}>›</Text>
                 </Pressable>
-                <Pressable onPress={() => renameRecent(item)}>
-                  <Text style={[styles.action, theme.text]}>Rename</Text>
-                </Pressable>
-                <Pressable onPress={() => sharePdf(item)}>
-                  <Text style={[styles.action, theme.text]}>Share</Text>
-                </Pressable>
-                <Pressable onPress={() => removeRecent(item)}>
-                  <Text style={[styles.action, theme.text]}>Delete</Text>
-                </Pressable>
+                <View style={styles.rowActions}>
+                  <Pressable onPress={() => sharePdf(item)} style={styles.smallAction}><Text style={styles.smallActionText}>Share</Text></Pressable>
+                  <Pressable onPress={() => renameRecent(item)} style={styles.moreAction}><Text style={[styles.moreActionText, theme.text]}>•••</Text></Pressable>
+                </View>
               </View>
             )}
           />
@@ -690,7 +706,7 @@ export default function App() {
               <Text style={[styles.settingText, theme.text]}>Clear recent history</Text>
             </Pressable>
             <Text style={[styles.about, theme.muted]}>
-              Kuntal PDF Reader 3.0{"\n"}
+              Kuntal PDF Reader 4.0{"\n"}
               Native PDF rendering with reader controls, bookmarks, zoom, page jump,
               full-screen mode, sharing and recent-file management.
             </Text>
@@ -723,24 +739,48 @@ function InfoRow({ label, value, theme }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  header: { padding: 20, flexDirection: "row", alignItems: "center" },
-  brand: { fontSize: 25, fontWeight: "900" },
-  subtitle: { marginTop: 3, fontSize: 13 },
-  iconBtn: { padding: 8 },
-  icon: { fontSize: 23 },
+  header: { paddingHorizontal: 22, paddingTop: 14, paddingBottom: 10, flexDirection: "row", alignItems: "center" },
+  brand: { fontSize: 27, fontWeight: "900", letterSpacing: -0.8 },
+  subtitle: { marginTop: 3, fontSize: 13, fontWeight: "600" },
+  iconBtn: { width: 46, height: 46, borderRadius: 16, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  icon: { fontSize: 21 },
   content: { flex: 1, paddingHorizontal: 20 },
-  openButton: { backgroundColor: "#2563eb", padding: 17, borderRadius: 15, alignItems: "center" },
-  openButtonText: { color: "#fff", fontSize: 17, fontWeight: "800" },
-  search: { marginTop: 16, padding: 14, borderWidth: 1, borderRadius: 12, fontSize: 16 },
-  section: { fontSize: 20, fontWeight: "800", marginTop: 25, marginBottom: 12 },
-  empty: { padding: 30, borderRadius: 16, alignItems: "center" },
+  heroCard: { marginTop: 6, padding: 20, borderRadius: 27, backgroundColor: "#172554", overflow: "hidden", minHeight: 205 },
+  heroGlow: { position: "absolute", width: 190, height: 190, borderRadius: 95, backgroundColor: "#2563eb", right: -65, top: -70, opacity: 0.42 },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  logoMark: { width: 42, height: 42, borderRadius: 14, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  logoMarkText: { color: "#172554", fontSize: 21, fontWeight: "900" },
+  heroPill: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.14)" },
+  heroPillText: { color: "#dbeafe", fontSize: 10, fontWeight: "900", letterSpacing: 1 },
+  heroTitle: { color: "#fff", fontSize: 25, lineHeight: 30, fontWeight: "900", marginTop: 18, maxWidth: 310, letterSpacing: -0.5 },
+  heroSubtitle: { color: "#cbd5e1", fontSize: 13, lineHeight: 19, marginTop: 7, maxWidth: 330 },
+  openButton: { marginTop: 16, backgroundColor: "#fff", paddingVertical: 14, paddingHorizontal: 18, borderRadius: 15, alignItems: "center" },
+  openButtonText: { color: "#172554", fontSize: 16, fontWeight: "900" },
+  searchWrap: { marginTop: 15, height: 54, borderRadius: 17, flexDirection: "row", alignItems: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: "rgba(148,163,184,0.18)" },
+  searchIcon: { fontSize: 25, color: "#64748b", marginRight: 7, marginTop: -3 },
+  search: { flex: 1, paddingVertical: 0, fontSize: 15, fontWeight: "600" },
+  sectionHeader: { marginTop: 21, marginBottom: 11, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  section: { fontSize: 21, fontWeight: "900", letterSpacing: -0.4 },
+  sectionHint: { fontSize: 12, marginTop: 3, fontWeight: "600" },
+  countPill: { minWidth: 32, height: 30, paddingHorizontal: 9, borderRadius: 15, backgroundColor: "#e8efff", alignItems: "center", justifyContent: "center" },
+  countText: { color: "#2563eb", fontSize: 12, fontWeight: "900" },
+  empty: { padding: 30, borderRadius: 20, alignItems: "center" },
   emptyIcon: { fontSize: 45 },
   emptyTitle: { fontSize: 18, fontWeight: "800", marginTop: 10 },
   emptyText: { textAlign: "center", marginTop: 6, lineHeight: 21 },
-  row: { padding: 14, borderRadius: 14, marginBottom: 10, flexDirection: "row", alignItems: "center", gap: 8 },
-  pdfBadge: { fontSize: 11, fontWeight: "900", borderWidth: 1, borderRadius: 7, padding: 7 },
-  fileName: { fontSize: 15, fontWeight: "700" },
-  action: { fontSize: 11, fontWeight: "800" },
+  row: { padding: 12, borderRadius: 20, marginBottom: 10, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "rgba(148,163,184,0.13)", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  rowMain: { flex: 1, flexDirection: "row", alignItems: "center" },
+  pdfIconBox: { width: 49, height: 55, borderRadius: 14, backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#dbeafe" },
+  pdfIconText: { color: "#2563eb", fontSize: 11, fontWeight: "900", letterSpacing: 0.5 },
+  fileMeta: { flex: 1, marginLeft: 12 },
+  fileName: { fontSize: 15, fontWeight: "800", letterSpacing: -0.1 },
+  fileSub: { fontSize: 11, marginTop: 5, fontWeight: "600" },
+  chevron: { fontSize: 27, marginHorizontal: 5 },
+  rowActions: { flexDirection: "row", alignItems: "center", marginLeft: 4 },
+  smallAction: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 11, backgroundColor: "#eef2ff" },
+  smallActionText: { color: "#2563eb", fontSize: 11, fontWeight: "900" },
+  moreAction: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  moreActionText: { fontSize: 14, letterSpacing: 2 },
   viewerHeader: { height: 58, paddingHorizontal: 5, flexDirection: "row", alignItems: "center" },
   headerBtn: { minWidth: 42, height: 45, alignItems: "center", justifyContent: "center" },
   headerBtnText: { fontSize: 36, fontWeight: "300" },
@@ -783,6 +823,7 @@ const lightTheme = {
   text: { color: "#111827" },
   muted: { color: "#6b7280" },
   input: { backgroundColor: "#fff", borderColor: "#d1d5db", color: "#111827" },
+  searchInput: { backgroundColor: "transparent", color: "#111827" },
 };
 
 const darkTheme = {
@@ -791,4 +832,5 @@ const darkTheme = {
   text: { color: "#f9fafb" },
   muted: { color: "#9ca3af" },
   input: { backgroundColor: "#1f2937", borderColor: "#4b5563", color: "#fff" },
+  searchInput: { backgroundColor: "transparent", color: "#fff" },
 };
