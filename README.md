@@ -1,45 +1,34 @@
-# Kuntal PDF Reader V2
+# Kuntal PDF Reader V3
 
-## Native PDF rendering
+Expo SDK 53 native PDF reader.
 
-This V2 uses `react-native-pdf` 6.7.7 with the Expo SDK 53-compatible config plugins:
-- `@config-plugins/react-native-pdf` 11.0.0
-- `@config-plugins/react-native-blob-util` 11.0.0
-- `react-native-blob-util` 0.21.2
-
-These versions are intentionally pinned.
-
-## Important
-
-This package requires a custom native/development build. It will NOT work as a normal Expo Go app.
-
-Build an Android APK with EAS:
-
-```bash
-npm install
-npm install -g eas-cli
-eas login
-eas build -p android --profile preview
-```
-
-The `preview` profile is configured to produce an installable APK.
-
-## Features in V2
-
-- Android PDF picker
+## Features
 - Real native PDF rendering
-- Page count
+- Pinch/double-tap zoom
+- Zoom +/- and reset
+- Page count and direct page jump
 - Previous/next page
-- Pinch/double-tap zoom through native PDF view
-- Recent PDFs
-- Search recent PDF filenames
-- Bookmarks by page
-- Dark mode
-- Share
+- Remembers last reading page
+- Page bookmarks + bookmark list
+- Full-screen reading
+- PDF information panel
+- Share PDF
+- Search recent PDF names
+- Rename recent PDF display name
 - Delete recent entry
+- Dark mode
+- Clear recent history/bookmarks
 - Android back handling
-- Error handling for failed PDF rendering
+- PDF rendering error handling
 
-## Limitation
+## Build
+This uses react-native-pdf and requires an EAS/custom native build, not Expo Go.
+Production is configured to generate an APK.
 
-Full-text search inside PDF content is not implemented in V2. The search box searches recent PDF filenames. Content search can be added as a later version using a PDF text-extraction strategy.
+
+## PDF Tools
+- Merge multiple PDFs into one
+- Extract the currently displayed page as a new PDF
+- Rotate the current page 90 degrees and export
+- Create a complete PDF copy
+- Android print dialog
