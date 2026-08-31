@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Kuntal PDF Reader",
+    "slug": "kuntal-pdf-reader",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.kuntal.pdfreader",
+      "permissions": []
+    },
+    "plugins": [
+      "@config-plugins/react-native-blob-util",
+      "@config-plugins/react-native-pdf",
+      "expo-document-picker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a570a555-2aa1-4d13-9b57-3069bca6c664"
+      }
+    }
+  }
+}
