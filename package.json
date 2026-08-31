@@ -1,6 +1,6 @@
 {
   "name": "kuntal-documents",
-  "version": "9.1.0",
+  "version": "9.2.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -21,8 +21,8 @@
     "react-native": "0.79.5",
     "react-native-safe-area-context": "5.4.0",
     "react-native-pdf": "6.7.7",
-    "pdf-lib": "^1.17.1",
-    "@react-native-ml-kit/text-recognition": "^4.0.0",
+    "pdf-lib": "1.17.1",
+    "@react-native-ml-kit/text-recognition": "4.0.0",
     "@config-plugins/react-native-pdf": "11.0.0",
     "@config-plugins/react-native-blob-util": "11.0.0",
     "react-native-blob-util": "0.21.2"
