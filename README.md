@@ -19,6 +19,12 @@ Premium Expo SDK 53 Android PDF + Smart Scanner workspace.
 - Premium home dashboard and Quick Tools search
 - App icon configured at root as `icon.png`
 
+## V9.2.1 bug fixes
+- Signature/Watermark tools no longer rely on `Alert.prompt` (an iOS-only API that silently did nothing on Android). They now open the existing PDF Quick Edit modal instead.
+- Fixed a double-rotation bug: page rotation is now only baked into the PDF via `pdf-lib`, removing the redundant view-level CSS transform that caused rotated pages to render clipped/incorrect.
+- Added a busy/loading overlay for PDF create, merge, split, rotate, gallery import and OCR — these are async operations that could otherwise look frozen on larger files.
+- Added error handling around `openPDF` for cancelled/failed picks.
+
 ## V9.2 build-stability changes
 - Expo SDK 53-compatible dependency versions are pinned instead of using loose ranges for native-critical packages.
 - New Architecture is explicitly disabled for better compatibility with the native PDF/ML Kit stack used by this project.
