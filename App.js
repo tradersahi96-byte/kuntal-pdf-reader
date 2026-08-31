@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -19,11 +18,11 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
+import ReactNativeBlobUtil from "react-native-blob-util";
 import * as Sharing from "expo-sharing";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import { PDFDocument, rgb, degrees } from "pdf-lib";
-import TextRecognition from "@react-native-ml-kit/text-recognition";
+import { recognizeText } from "@infinitered/react-native-mlkit-text-recognition";
 import Pdf from "react-native-pdf";
 
 const C = {
@@ -96,8 +95,8 @@ export default function App() {
   const [pdfName, setPdfName] = useState("");
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [viewerRotation, setViewerRotation] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
-  const [busy, setBusy] = useState("");
   const [watermark, setWatermark] = useState("Kuntal Documents");
   const [signature, setSignature] = useState("");
   const [editText, setEditText] = useState("");
@@ -148,7 +147,6 @@ export default function App() {
     });
     if (r.canceled) return;
     try {
-      setBusy("Importing images…");
       const ps = [];
       for (let i = 0; i < r.assets.length; i++) {
         const p = await processImage(r.assets[i].uri);
@@ -158,16 +156,14 @@ export default function App() {
       setScreen("pages");
     } catch (e) {
       Alert.alert("Import failed", e?.message || String(e));
-    } finally {
-      setBusy("");
     }
   }
 
   async function saveBytes(bytes, filename) {
-    const uri = `${FileSystem.cacheDirectory}${filename}`;
+    const uri = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${filename}`;
     const base64 = bytesToBase64(bytes);
-    await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
-    return uri;
+    await ReactNativeBlobUtil.fs.writeFile(uri, base64, "base64");
+    return `file://${uri}`;
   }
 
   async function createPDF() {
@@ -176,7 +172,6 @@ export default function App() {
       return;
     }
     try {
-      setBusy("Creating PDF…");
       const pdf = await PDFDocument.create();
       for (const p of pages) {
         const bytes = await fetch(p.uri).then((r) => r.arrayBuffer());
@@ -198,40 +193,31 @@ export default function App() {
       setScreen("viewer");
     } catch (e) {
       Alert.alert("PDF creation failed", e?.message || String(e));
-    } finally {
-      setBusy("");
     }
   }
 
   async function openPDF() {
-    try {
-      const r = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      if (r.canceled || !r.assets?.length) return;
-      const asset = r.assets[0];
-      setPdfUri(asset.uri);
-      setPdfName(asset.name || "Document.pdf");
-      setPdfPage(1);
-      setPdfPageCount(0);
-      setScreen("viewer");
-    } catch (e) {
-      Alert.alert("Could not open PDF", e?.message || String(e));
-    }
+    const r = await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (r.canceled) return;
+    const asset = r.assets[0];
+    setPdfUri(asset.uri);
+    setPdfName(asset.name || "Document.pdf");
+    setPdfPage(1);
+    setViewerRotation(0);
+    setScreen("viewer");
   }
 
   async function recognize(uri) {
     try {
-      setBusy("Recognizing text…");
-      const result = await TextRecognition.recognize(uri);
+      const result = await recognizeText(uri);
       setOcrText(result.text || "No text recognized.");
       setScreen("ocrResult");
     } catch (e) {
       Alert.alert("OCR unavailable", "OCR uses native ML Kit. Build this project as an EAS/custom Android APK.");
-    } finally {
-      setBusy("");
     }
   }
 
@@ -242,7 +228,6 @@ export default function App() {
       return;
     }
     try {
-      setBusy("Merging PDFs…");
       const out = await PDFDocument.create();
       for (const asset of r.assets) {
         const bytes = await fetch(asset.uri).then((x) => x.arrayBuffer());
@@ -254,20 +239,15 @@ export default function App() {
       const uri = await saveBytes(bytes, `Merged-${Date.now()}.pdf`);
       setPdfUri(uri);
       setPdfName("Merged PDF");
-      setPdfPage(1);
-      setPdfPageCount(0);
       setScreen("viewer");
     } catch (e) {
       Alert.alert("Merge failed", e?.message || String(e));
-    } finally {
-      setBusy("");
     }
   }
 
   async function extractCurrentPage() {
     if (!pdfUri) return Alert.alert("Open a PDF first", "Open a PDF before extracting a page.");
     try {
-      setBusy("Extracting page…");
       const bytes = await fetch(pdfUri).then((x) => x.arrayBuffer());
       const src = await PDFDocument.load(bytes);
       const out = await PDFDocument.create();
@@ -278,39 +258,27 @@ export default function App() {
       setPdfUri(uri);
       setPdfName(`Page ${pdfPage}`);
       setPdfPage(1);
-      setPdfPageCount(0);
       setScreen("viewer");
     } catch (e) {
       Alert.alert("Split failed", e?.message || String(e));
-    } finally {
-      setBusy("");
     }
   }
 
   async function rotatePDF() {
     if (!pdfUri) return Alert.alert("Open a PDF first");
     try {
-      setBusy("Rotating page…");
       const bytes = await fetch(pdfUri).then((x) => x.arrayBuffer());
       const src = await PDFDocument.load(bytes);
       const page = src.getPage(Math.max(0, pdfPage - 1));
-      // Rotation is baked directly into the PDF page here. react-native-pdf
-      // already reads this rotation metadata when rendering, so no extra
-      // view-level transform should be applied on top of this (that was
-      // causing the page to appear rotated twice / clipped).
       page.setRotation(degrees((page.getRotation().angle + 90) % 360));
       const data = await src.save();
       const uri = await saveBytes(data, `Rotated-${Date.now()}.pdf`);
-      const keepPage = pdfPage;
       setPdfUri(uri);
+      setViewerRotation((x) => (x + 90) % 360);
       setPdfName("Rotated PDF");
-      setPdfPageCount(0);
-      setPdfPage(keepPage);
-      Alert.alert("Done", `Page ${keepPage} rotated 90°.`);
+      Alert.alert("Done", `Page ${pdfPage} rotated 90°.`);
     } catch (e) {
       Alert.alert("Rotate failed", e?.message || String(e));
-    } finally {
-      setBusy("");
     }
   }
 
@@ -325,8 +293,9 @@ export default function App() {
   async function pdfInfo() {
     if (!pdfUri) return;
     try {
-      const stat = await FileSystem.getInfoAsync(pdfUri);
-      setInfo(stat);
+      const path = pdfUri.startsWith("file://") ? pdfUri.slice(7) : pdfUri;
+      const stat = await ReactNativeBlobUtil.fs.stat(path);
+      setInfo({ exists: true, size: Number(stat.size || 0), uri: pdfUri });
     } catch (e) {
       setInfo(null);
     }
@@ -339,28 +308,20 @@ export default function App() {
     if (type === "split") return extractCurrentPage();
     if (type === "rotate") return rotatePDF();
     if (type === "ocr") return pages[0] ? recognize(pages[0].uri) : Alert.alert("OCR", "Scan/import a page first, then run OCR.");
-    if (type === "signature" || type === "watermark") {
-      // Alert.prompt only exists on iOS and is undefined on Android, so this
-      // used to silently do nothing on an Android build. Both fields already
-      // live in the PDF Quick Edit modal, so just open that instead.
-      setShowEditor(true);
+    if (type === "signature") {
+      Alert.prompt?.("Signature", "Type the name/signature text", (v) => setSignature(v || ""));
+      if (!Alert.prompt) Alert.alert("Signature", "Signature text can be added in the scan workflow.");
+      return;
+    }
+    if (type === "watermark") {
+      Alert.prompt?.("Watermark", "Enter watermark text", (v) => setWatermark(v || ""));
+      if (!Alert.prompt) Alert.alert("Watermark", `Current watermark: ${watermark}`);
       return;
     }
     if (type === "edit") return setShowEditor(true);
     if (type === "info") return pdfInfo();
     if (type === "search") return Alert.alert("PDF Search", ocrText ? "Search is available in the OCR text screen." : "Run OCR on a scanned page first.");
   }
-
-  const busyOverlay = busy ? (
-    <Modal transparent visible animationType="fade">
-      <View style={s.busyBackdrop}>
-        <View style={s.busyBox}>
-          <ActivityIndicator size="large" color={C.accent} />
-          <Text style={s.busyText}>{busy}</Text>
-        </View>
-      </View>
-    </Modal>
-  ) : null;
 
   if (screen === "camera") {
     return (
@@ -380,7 +341,6 @@ export default function App() {
           </View>
           <TouchableOpacity style={s.shutter} onPress={capture}><View style={s.shutterInner}/></TouchableOpacity>
         </View>
-        {busyOverlay}
       </SafeAreaView>
     );
   }
@@ -394,13 +354,12 @@ export default function App() {
           <View style={s.pageCard}><View style={s.pageNumber}><Text style={s.pageNumberText}>{index + 1}</Text></View><Image source={{ uri: item.uri }} style={s.thumb}/><View style={s.pageFooter}><Text style={s.pageLabel}>Page {index + 1}</Text><View style={s.pageActions}><TouchableOpacity onPress={() => setPages((a) => move(a, index, index - 1))}><Text style={s.actionText}>↑</Text></TouchableOpacity><TouchableOpacity onPress={() => setPages((a) => move(a, index, index + 1))}><Text style={s.actionText}>↓</Text></TouchableOpacity><TouchableOpacity onPress={() => setPages((a) => a.filter((z) => z.id !== item.id))}><Text style={s.deleteText}>Delete</Text></TouchableOpacity></View></View></View>
         )}/>
         <View style={s.bottomBar}><Button onPress={() => startScan("manual")}><Text>＋ Add Page</Text></Button><Button primary onPress={createPDF}>Create PDF</Button></View>
-        {busyOverlay}
       </SafeAreaView>
     );
   }
 
   if (screen === "ocrResult") {
-    return <SafeAreaView style={s.safe}><View style={s.topBar}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.back}>‹</Text></TouchableOpacity><View><Text style={s.topTitle}>Recognized Text</Text><Text style={s.topSub}>OCR result</Text></View><View/></View><ScrollView style={s.ocrWrap}><TextInput multiline value={ocrText} onChangeText={setOcrText} style={s.ocrInput}/><Button primary onPress={() => setScreen("home")}>Done</Button></ScrollView>{busyOverlay}</SafeAreaView>;
+    return <SafeAreaView style={s.safe}><View style={s.topBar}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.back}>‹</Text></TouchableOpacity><View><Text style={s.topTitle}>Recognized Text</Text><Text style={s.topSub}>OCR result</Text></View><View/></View><ScrollView style={s.ocrWrap}><TextInput multiline value={ocrText} onChangeText={setOcrText} style={s.ocrInput}/><Button primary onPress={() => setScreen("home")}>Done</Button></ScrollView></SafeAreaView>;
   }
 
   if (screen === "viewer") {
@@ -409,13 +368,12 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor={C.dark}/>
         <View style={s.viewerTop}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.viewerBack}>‹</Text></TouchableOpacity><View style={{ flex: 1 }}><Text style={s.viewerTitle} numberOfLines={1}>{pdfName || "PDF Document"}</Text><Text style={s.viewerSub}>{pdfPageCount ? `${pdfPage} / ${pdfPageCount}` : `Page ${pdfPage}`}</Text></View><TouchableOpacity onPress={sharePDF}><Text style={s.viewerIcon}>↗</Text></TouchableOpacity><TouchableOpacity onPress={() => setBookmarked((x) => !x)}><Text style={s.viewerIcon}>{bookmarked ? "★" : "☆"}</Text></TouchableOpacity></View>
         <View style={s.pdfStage}>
-          {pdfUri ? <Pdf source={{ uri: pdfUri, cache: true }} style={s.pdf} page={pdfPage} onLoadComplete={(n) => setPdfPageCount(n)} onPageChanged={(p) => setPdfPage(p)} onError={(e) => Alert.alert("PDF error", "This PDF could not be rendered on this device.")} enablePaging={false} horizontal={false} spacing={8} /> : <Text style={s.muted}>No PDF selected</Text>}
+          {pdfUri ? <Pdf source={{ uri: pdfUri, cache: true }} style={[s.pdf, { transform: [{ rotate: `${viewerRotation}deg` }] }]} page={pdfPage} onLoadComplete={(n) => setPdfPageCount(n)} onPageChanged={(p) => setPdfPage(p)} onError={(e) => Alert.alert("PDF error", "This PDF could not be rendered on this device.")} enablePaging={false} horizontal={false} spacing={8} /> : <Text style={s.muted}>No PDF selected</Text>}
         </View>
         <View style={s.viewerControls}><TouchableOpacity onPress={() => setPdfPage((p) => Math.max(1, p - 1))}><Text style={s.ctrl}>‹</Text></TouchableOpacity><View style={s.pageJump}><Text style={s.pageJumpText}>{pdfPageCount ? `${pdfPage} / ${pdfPageCount}` : `Page ${pdfPage}`}</Text></View><TouchableOpacity onPress={() => setPdfPage((p) => Math.min(pdfPageCount || p + 1, p + 1))}><Text style={s.ctrl}>›</Text></TouchableOpacity></View>
         <View style={s.viewerTools}><TouchableOpacity onPress={rotatePDF}><Text style={s.viewerTool}>↻<Text style={s.viewerToolLabel}> Rotate</Text></Text></TouchableOpacity><TouchableOpacity onPress={extractCurrentPage}><Text style={s.viewerTool}>✂<Text style={s.viewerToolLabel}> Extract</Text></Text></TouchableOpacity><TouchableOpacity onPress={() => setShowEditor(true)}><Text style={s.viewerTool}>T<Text style={s.viewerToolLabel}> Edit</Text></Text></TouchableOpacity><TouchableOpacity onPress={pdfInfo}><Text style={s.viewerTool}>ⓘ<Text style={s.viewerToolLabel}> Info</Text></Text></TouchableOpacity></View>
         <Modal visible={showEditor} transparent animationType="slide" onRequestClose={() => setShowEditor(false)}><View style={s.modalBackdrop}><View style={s.editor}><Text style={s.editorTitle}>PDF Quick Edit</Text><Text style={s.editorHint}>Add a text overlay, signature label or watermark to the next generated/exported PDF.</Text><TextInput value={editText} onChangeText={setEditText} placeholder="Text to place on document" style={s.editorInput}/><TextInput value={watermark} onChangeText={setWatermark} placeholder="Watermark" style={s.editorInput}/><TextInput value={signature} onChangeText={setSignature} placeholder="Signature / name" style={s.editorInput}/><View style={s.editorRow}><Button onPress={() => setShowEditor(false)}>Cancel</Button><Button primary onPress={() => { setShowEditor(false); Alert.alert("Saved", "Editing settings saved for PDF creation/export."); }}>Save</Button></View></View></View></Modal>
         {info && <Modal visible transparent animationType="fade" onRequestClose={() => setInfo(null)}><View style={s.modalBackdrop}><View style={s.infoCard}><Text style={s.editorTitle}>PDF Information</Text><Text style={s.infoLine}>Name: {pdfName || "Document"}</Text><Text style={s.infoLine}>Pages: {pdfPageCount || "Unknown"}</Text><Text style={s.infoLine}>Size: {info.size ? `${Math.round(info.size / 1024)} KB` : "Unknown"}</Text><Button primary onPress={() => setInfo(null)}>Close</Button></View></View></Modal>}
-        {busyOverlay}
       </SafeAreaView>
     );
   }
@@ -432,7 +390,6 @@ export default function App() {
         <View style={s.openRow}><Button onPress={openPDF}>Open PDF</Button><Button primary onPress={() => startScan("auto")}>＋ Scan Document</Button></View>
         <View style={s.featureStrip}><Text style={s.featureTitle}>V9 • All-in-One PDF workspace</Text><Text style={s.featureText}>Scanner · OCR · merge · split · rotate · annotations · watermark · signature</Text></View>
       </ScrollView>
-      {busyOverlay}
     </SafeAreaView>
   );
 }
@@ -455,5 +412,5 @@ function bytesToBase64(bytes) {
 }
 
 const s = StyleSheet.create({
-  safe:{flex:1,backgroundColor:C.bg}, container:{padding:20,paddingBottom:40}, header:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:8}, brandRow:{flexDirection:"row",alignItems:"center",gap:12}, icon:{width:48,height:48,borderRadius:15}, kicker:{fontSize:10,fontWeight:"900",letterSpacing:2,color:C.accent}, title:{fontSize:29,fontWeight:"900",color:C.ink,lineHeight:31}, tagline:{color:C.muted,fontSize:14,marginTop:7,marginBottom:18}, settings:{width:44,height:44,borderRadius:14,backgroundColor:C.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:C.line}, settingsText:{fontSize:21,color:C.ink}, search:{height:52,backgroundColor:C.card,borderRadius:17,borderWidth:1,borderColor:C.line,paddingHorizontal:16,fontSize:15,color:C.ink,marginBottom:14}, hero:{overflow:"hidden",backgroundColor:C.dark,borderRadius:25,padding:18,flexDirection:"row",alignItems:"center",gap:13,shadowOpacity:.12,shadowRadius:15,shadowOffset:{width:0,height:8}}, heroGlow:{position:"absolute",width:150,height:150,borderRadius:75,right:-40,top:-60,backgroundColor:"#243B72",opacity:.6}, heroIconBox:{width:52,height:52,borderRadius:17,backgroundColor:"#25375E",alignItems:"center",justifyContent:"center"}, heroIcon:{color:"#fff",fontSize:28}, heroTitle:{color:"#fff",fontSize:20,fontWeight:"900"}, heroSub:{color:"#B9C3D4",fontSize:12,marginTop:4}, heroArrow:{color:"#fff",fontSize:32}, sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:25,marginBottom:12}, section:{fontSize:20,fontWeight:"900",color:C.ink}, sectionCount:{fontSize:12,color:C.muted}, grid:{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",gap:10}, tool:{width:"48.3%",backgroundColor:C.card,borderRadius:19,padding:14,minHeight:118,borderWidth:1,borderColor:"#EEF0F4"}, toolIcon:{width:34,height:34,borderRadius:11,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, toolIconText:{fontSize:15,fontWeight:"900",color:C.accent}, toolText:{fontWeight:"900",fontSize:14,color:C.ink,marginTop:11}, toolDesc:{fontSize:11,color:C.muted,marginTop:4,lineHeight:15}, openRow:{flexDirection:"row",gap:10,marginTop:18}, primary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,backgroundColor:C.accent,alignItems:"center",justifyContent:"center"}, secondary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.card,alignItems:"center",justifyContent:"center"}, primaryText:{color:"#fff",fontWeight:"900",fontSize:14}, secondaryText:{color:C.ink,fontWeight:"900",fontSize:14}, smallButton:{paddingVertical:10}, featureStrip:{backgroundColor:C.accentSoft,borderRadius:17,padding:15,marginTop:16}, featureTitle:{fontWeight:"900",color:C.ink}, featureText:{color:C.muted,fontSize:11,marginTop:5,lineHeight:16}, camera:{flex:1,backgroundColor:"#000"}, cameraShade:{...StyleSheet.absoluteFillObject,backgroundColor:"rgba(0,0,0,.2)",alignItems:"center",paddingHorizontal:20}, camTop:{width:"100%",paddingTop:22,flexDirection:"row",alignItems:"center",justifyContent:"space-between"}, camBack:{fontSize:36,color:"#fff",lineHeight:36}, camTitle:{color:"#fff",fontWeight:"900",fontSize:18,textAlign:"center"}, camSub:{color:"#D0D5DD",fontSize:11,textAlign:"center",marginTop:2}, live:{paddingHorizontal:10,paddingVertical:6,borderRadius:10,backgroundColor:"rgba(255,255,255,.15)"}, liveText:{fontSize:10,color:"#fff",fontWeight:"900"}, scanFrame:{marginTop:65,width:"88%",height:"53%",borderWidth:1,borderColor:"rgba(255,255,255,.55)",borderRadius:16}, c1:{position:"absolute",left:-2,top:-2,width:30,height:30,borderLeftWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopLeftRadius:8}, c2:{position:"absolute",right:-2,top:-2,width:30,height:30,borderRightWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopRightRadius:8}, c3:{position:"absolute",left:-2,bottom:-2,width:30,height:30,borderLeftWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomLeftRadius:8}, c4:{position:"absolute",right:-2,bottom:-2,width:30,height:30,borderRightWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomRightRadius:8}, hint:{color:"#fff",fontSize:12,textAlign:"center",marginTop:15}, scanModes:{flexDirection:"row",gap:8,marginTop:15}, scanMode:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"rgba(0,0,0,.45)"}, scanModeOn:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"#fff"}, scanModeText:{color:"#fff",fontWeight:"800"}, scanModeTextOn:{color:C.ink,fontWeight:"900"}, shutter:{position:"absolute",bottom:34,width:76,height:76,borderRadius:38,backgroundColor:"#fff",alignItems:"center",justifyContent:"center"}, shutterInner:{width:62,height:62,borderRadius:31,borderWidth:4,borderColor:C.dark}, topBar:{height:74,paddingHorizontal:17,flexDirection:"row",alignItems:"center",justifyContent:"space-between",backgroundColor:C.card,borderBottomWidth:1,borderBottomColor:C.line}, back:{fontSize:38,color:C.ink,width:42}, topTitle:{fontSize:18,fontWeight:"900",color:C.ink}, topSub:{fontSize:11,color:C.muted,marginTop:2}, countPill:{minWidth:32,height:30,borderRadius:15,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, countText:{color:C.accent,fontWeight:"900"}, filterRow:{paddingHorizontal:16,paddingVertical:11,gap:8}, filter:{backgroundColor:C.card,borderWidth:1,borderColor:C.line,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterOn:{backgroundColor:C.accent,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterText:{color:C.muted,fontWeight:"800",fontSize:12}, filterTextOn:{color:"#fff",fontWeight:"900",fontSize:12}, pagesList:{padding:8,paddingBottom:90}, pageCard:{width:"46%",backgroundColor:C.card,borderRadius:17,padding:8,margin:7,borderWidth:1,borderColor:"#EAECF0"}, pageNumber:{position:"absolute",zIndex:2,left:13,top:13,width:27,height:27,borderRadius:14,backgroundColor:C.dark,alignItems:"center",justifyContent:"center"}, pageNumberText:{color:"#fff",fontWeight:"900",fontSize:11}, thumb:{width:"100%",height:220,borderRadius:11,backgroundColor:"#F2F4F7"}, pageFooter:{padding:7}, pageLabel:{fontWeight:"900",fontSize:12,color:C.ink}, pageActions:{flexDirection:"row",justifyContent:"space-between",marginTop:8}, actionText:{fontWeight:"900",fontSize:15,color:C.accent}, deleteText:{color:C.danger,fontWeight:"800",fontSize:11}, bottomBar:{position:"absolute",bottom:0,left:0,right:0,padding:12,flexDirection:"row",gap:10,backgroundColor:"rgba(255,255,255,.97)",borderTopWidth:1,borderTopColor:C.line}, ocrWrap:{padding:18}, ocrInput:{minHeight:350,backgroundColor:C.card,borderRadius:18,borderWidth:1,borderColor:C.line,padding:16,textAlignVertical:"top",fontSize:15,color:C.ink,marginBottom:12}, viewerSafe:{flex:1,backgroundColor:"#0B0F17"}, viewerTop:{height:72,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:10,backgroundColor:C.dark}, viewerBack:{color:"#fff",fontSize:38,width:35}, viewerTitle:{color:"#fff",fontSize:15,fontWeight:"900"}, viewerSub:{color:"#98A2B3",fontSize:11,marginTop:2}, viewerIcon:{color:"#fff",fontSize:22,paddingHorizontal:7}, pdfStage:{flex:1,backgroundColor:"#303743",alignItems:"center",justifyContent:"center"}, pdf:{flex:1,width:"100%",backgroundColor:"#303743"}, muted:{color:"#98A2B3"}, viewerControls:{height:52,backgroundColor:C.dark,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:28}, ctrl:{color:"#fff",fontSize:30}, pageJump:{paddingHorizontal:16,paddingVertical:7,borderRadius:10,backgroundColor:"#202938"}, pageJumpText:{color:"#fff",fontWeight:"800",fontSize:12}, viewerTools:{height:62,backgroundColor:C.dark,borderTopWidth:1,borderTopColor:"#283241",flexDirection:"row",justifyContent:"space-around",alignItems:"center"}, viewerTool:{color:"#fff",fontSize:18,fontWeight:"900"}, viewerToolLabel:{fontSize:11,fontWeight:"700",color:"#D0D5DD"}, modalBackdrop:{flex:1,backgroundColor:"rgba(0,0,0,.45)",justifyContent:"flex-end"}, editor:{backgroundColor:C.card,borderTopLeftRadius:25,borderTopRightRadius:25,padding:20,paddingBottom:30}, editorTitle:{fontSize:20,fontWeight:"900",color:C.ink}, editorHint:{fontSize:12,color:C.muted,lineHeight:18,marginTop:6,marginBottom:15}, editorInput:{height:50,borderWidth:1,borderColor:C.line,borderRadius:14,paddingHorizontal:14,marginBottom:10,color:C.ink}, editorRow:{flexDirection:"row",gap:10,marginTop:4}, infoCard:{backgroundColor:C.card,margin:25,borderRadius:22,padding:22}, infoLine:{fontSize:14,color:C.ink,marginTop:12}, busyBackdrop:{flex:1,backgroundColor:"rgba(16,24,40,.55)",alignItems:"center",justifyContent:"center"}, busyBox:{backgroundColor:C.card,borderRadius:18,paddingVertical:26,paddingHorizontal:32,alignItems:"center",gap:12}, busyText:{color:C.ink,fontWeight:"800",fontSize:13,marginTop:4}
+  safe:{flex:1,backgroundColor:C.bg}, container:{padding:20,paddingBottom:40}, header:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:8}, brandRow:{flexDirection:"row",alignItems:"center",gap:12}, icon:{width:48,height:48,borderRadius:15}, kicker:{fontSize:10,fontWeight:"900",letterSpacing:2,color:C.accent}, title:{fontSize:29,fontWeight:"900",color:C.ink,lineHeight:31}, tagline:{color:C.muted,fontSize:14,marginTop:7,marginBottom:18}, settings:{width:44,height:44,borderRadius:14,backgroundColor:C.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:C.line}, settingsText:{fontSize:21,color:C.ink}, search:{height:52,backgroundColor:C.card,borderRadius:17,borderWidth:1,borderColor:C.line,paddingHorizontal:16,fontSize:15,color:C.ink,marginBottom:14}, hero:{overflow:"hidden",backgroundColor:C.dark,borderRadius:25,padding:18,flexDirection:"row",alignItems:"center",gap:13,shadowOpacity:.12,shadowRadius:15,shadowOffset:{width:0,height:8}}, heroGlow:{position:"absolute",width:150,height:150,borderRadius:75,right:-40,top:-60,backgroundColor:"#243B72",opacity:.6}, heroIconBox:{width:52,height:52,borderRadius:17,backgroundColor:"#25375E",alignItems:"center",justifyContent:"center"}, heroIcon:{color:"#fff",fontSize:28}, heroTitle:{color:"#fff",fontSize:20,fontWeight:"900"}, heroSub:{color:"#B9C3D4",fontSize:12,marginTop:4}, heroArrow:{color:"#fff",fontSize:32}, sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:25,marginBottom:12}, section:{fontSize:20,fontWeight:"900",color:C.ink}, sectionCount:{fontSize:12,color:C.muted}, grid:{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",gap:10}, tool:{width:"48.3%",backgroundColor:C.card,borderRadius:19,padding:14,minHeight:118,borderWidth:1,borderColor:"#EEF0F4"}, toolIcon:{width:34,height:34,borderRadius:11,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, toolIconText:{fontSize:15,fontWeight:"900",color:C.accent}, toolText:{fontWeight:"900",fontSize:14,color:C.ink,marginTop:11}, toolDesc:{fontSize:11,color:C.muted,marginTop:4,lineHeight:15}, openRow:{flexDirection:"row",gap:10,marginTop:18}, primary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,backgroundColor:C.accent,alignItems:"center",justifyContent:"center"}, secondary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.card,alignItems:"center",justifyContent:"center"}, primaryText:{color:"#fff",fontWeight:"900",fontSize:14}, secondaryText:{color:C.ink,fontWeight:"900",fontSize:14}, smallButton:{paddingVertical:10}, featureStrip:{backgroundColor:C.accentSoft,borderRadius:17,padding:15,marginTop:16}, featureTitle:{fontWeight:"900",color:C.ink}, featureText:{color:C.muted,fontSize:11,marginTop:5,lineHeight:16}, camera:{flex:1,backgroundColor:"#000"}, cameraShade:{...StyleSheet.absoluteFillObject,backgroundColor:"rgba(0,0,0,.2)",alignItems:"center",paddingHorizontal:20}, camTop:{width:"100%",paddingTop:22,flexDirection:"row",alignItems:"center",justifyContent:"space-between"}, camBack:{fontSize:36,color:"#fff",lineHeight:36}, camTitle:{color:"#fff",fontWeight:"900",fontSize:18,textAlign:"center"}, camSub:{color:"#D0D5DD",fontSize:11,textAlign:"center",marginTop:2}, live:{paddingHorizontal:10,paddingVertical:6,borderRadius:10,backgroundColor:"rgba(255,255,255,.15)"}, liveText:{fontSize:10,color:"#fff",fontWeight:"900"}, scanFrame:{marginTop:65,width:"88%",height:"53%",borderWidth:1,borderColor:"rgba(255,255,255,.55)",borderRadius:16}, c1:{position:"absolute",left:-2,top:-2,width:30,height:30,borderLeftWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopLeftRadius:8}, c2:{position:"absolute",right:-2,top:-2,width:30,height:30,borderRightWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopRightRadius:8}, c3:{position:"absolute",left:-2,bottom:-2,width:30,height:30,borderLeftWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomLeftRadius:8}, c4:{position:"absolute",right:-2,bottom:-2,width:30,height:30,borderRightWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomRightRadius:8}, hint:{color:"#fff",fontSize:12,textAlign:"center",marginTop:15}, scanModes:{flexDirection:"row",gap:8,marginTop:15}, scanMode:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"rgba(0,0,0,.45)"}, scanModeOn:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"#fff"}, scanModeText:{color:"#fff",fontWeight:"800"}, scanModeTextOn:{color:C.ink,fontWeight:"900"}, shutter:{position:"absolute",bottom:34,width:76,height:76,borderRadius:38,backgroundColor:"#fff",alignItems:"center",justifyContent:"center"}, shutterInner:{width:62,height:62,borderRadius:31,borderWidth:4,borderColor:C.dark}, topBar:{height:74,paddingHorizontal:17,flexDirection:"row",alignItems:"center",justifyContent:"space-between",backgroundColor:C.card,borderBottomWidth:1,borderBottomColor:C.line}, back:{fontSize:38,color:C.ink,width:42}, topTitle:{fontSize:18,fontWeight:"900",color:C.ink}, topSub:{fontSize:11,color:C.muted,marginTop:2}, countPill:{minWidth:32,height:30,borderRadius:15,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, countText:{color:C.accent,fontWeight:"900"}, filterRow:{paddingHorizontal:16,paddingVertical:11,gap:8}, filter:{backgroundColor:C.card,borderWidth:1,borderColor:C.line,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterOn:{backgroundColor:C.accent,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterText:{color:C.muted,fontWeight:"800",fontSize:12}, filterTextOn:{color:"#fff",fontWeight:"900",fontSize:12}, pagesList:{padding:8,paddingBottom:90}, pageCard:{width:"46%",backgroundColor:C.card,borderRadius:17,padding:8,margin:7,borderWidth:1,borderColor:"#EAECF0"}, pageNumber:{position:"absolute",zIndex:2,left:13,top:13,width:27,height:27,borderRadius:14,backgroundColor:C.dark,alignItems:"center",justifyContent:"center"}, pageNumberText:{color:"#fff",fontWeight:"900",fontSize:11}, thumb:{width:"100%",height:220,borderRadius:11,backgroundColor:"#F2F4F7"}, pageFooter:{padding:7}, pageLabel:{fontWeight:"900",fontSize:12,color:C.ink}, pageActions:{flexDirection:"row",justifyContent:"space-between",marginTop:8}, actionText:{fontWeight:"900",fontSize:15,color:C.accent}, deleteText:{color:C.danger,fontWeight:"800",fontSize:11}, bottomBar:{position:"absolute",bottom:0,left:0,right:0,padding:12,flexDirection:"row",gap:10,backgroundColor:"rgba(255,255,255,.97)",borderTopWidth:1,borderTopColor:C.line}, ocrWrap:{padding:18}, ocrInput:{minHeight:350,backgroundColor:C.card,borderRadius:18,borderWidth:1,borderColor:C.line,padding:16,textAlignVertical:"top",fontSize:15,color:C.ink,marginBottom:12}, viewerSafe:{flex:1,backgroundColor:"#0B0F17"}, viewerTop:{height:72,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:10,backgroundColor:C.dark}, viewerBack:{color:"#fff",fontSize:38,width:35}, viewerTitle:{color:"#fff",fontSize:15,fontWeight:"900"}, viewerSub:{color:"#98A2B3",fontSize:11,marginTop:2}, viewerIcon:{color:"#fff",fontSize:22,paddingHorizontal:7}, pdfStage:{flex:1,backgroundColor:"#303743",alignItems:"center",justifyContent:"center"}, pdf:{flex:1,width:"100%",backgroundColor:"#303743"}, muted:{color:"#98A2B3"}, viewerControls:{height:52,backgroundColor:C.dark,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:28}, ctrl:{color:"#fff",fontSize:30}, pageJump:{paddingHorizontal:16,paddingVertical:7,borderRadius:10,backgroundColor:"#202938"}, pageJumpText:{color:"#fff",fontWeight:"800",fontSize:12}, viewerTools:{height:62,backgroundColor:C.dark,borderTopWidth:1,borderTopColor:"#283241",flexDirection:"row",justifyContent:"space-around",alignItems:"center"}, viewerTool:{color:"#fff",fontSize:18,fontWeight:"900"}, viewerToolLabel:{fontSize:11,fontWeight:"700",color:"#D0D5DD"}, modalBackdrop:{flex:1,backgroundColor:"rgba(0,0,0,.45)",justifyContent:"flex-end"}, editor:{backgroundColor:C.card,borderTopLeftRadius:25,borderTopRightRadius:25,padding:20,paddingBottom:30}, editorTitle:{fontSize:20,fontWeight:"900",color:C.ink}, editorHint:{fontSize:12,color:C.muted,lineHeight:18,marginTop:6,marginBottom:15}, editorInput:{height:50,borderWidth:1,borderColor:C.line,borderRadius:14,paddingHorizontal:14,marginBottom:10,color:C.ink}, editorRow:{flexDirection:"row",gap:10,marginTop:4}, infoCard:{backgroundColor:C.card,margin:25,borderRadius:22,padding:22}, infoLine:{fontSize:14,color:C.ink,marginTop:12}
 });
