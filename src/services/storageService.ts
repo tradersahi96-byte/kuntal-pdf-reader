@@ -38,7 +38,7 @@ export const getRecentDocuments = async (): Promise<DocumentItem[]> => {
     );
     return verified.filter((d): d is DocumentItem => d !== null);
   } catch (error) {
-    console.error('Failed to load recent docs:', error);
+    console.error('Error fetching recent docs:', error);
     return [];
   }
 };
@@ -52,7 +52,7 @@ export const saveRecentDocument = async (doc: Omit<DocumentItem, 'timestamp'>): 
     ].slice(0, 30);
     await AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(updated));
   } catch (error) {
-    console.error('Failed to save recent doc:', error);
+    console.error('Error saving recent doc:', error);
   }
 };
 
@@ -66,6 +66,6 @@ export const deleteDocumentFromStorage = async (uri: string): Promise<void> => {
     const filtered = recents.filter((item) => item.uri !== uri);
     await AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(filtered));
   } catch (error) {
-    console.error('Failed to delete doc:', error);
+    console.error('Error deleting doc:', error);
   }
 };
