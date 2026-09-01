@@ -1,7 +1,7 @@
 {
-  "name": "kuntal-pdf-reader",
+  "name": "kuntal-documents",
   "version": "3.0.0",
-  "main": "App.js",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-navigation/native": "^6.1.17",
+    "@react-navigation/native-stack": "^6.9.26",
     "expo": "~51.0.28",
     "expo-camera": "~15.0.14",
     "expo-document-picker": "~12.0.2",
