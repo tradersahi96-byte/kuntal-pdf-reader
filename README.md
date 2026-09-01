@@ -1,11 +1,26 @@
-# Kuntal Documents V9.2.3
+# Kuntal Documents 3.0
 
-Expo SDK 53 Android PDF/scanner project prepared for EAS APK builds.
+A Kuntal-branded document scanner/PDF utility app inspired by modern scanner apps.
+
+## Included
+- Modern scanner-style home screen with animated Quick Tools cards
+- Auto Scan and Manual Scan camera flows
+- Multi-page scan session
+- Gallery/images to PDF
+- Open local PDF files
+- Native PDF reader
+- Share PDF
+- Recent documents stored locally
+- Dark/light appearance setting
+- Scanner-style UI without copying proprietary code/assets
 
 ## Build
 
-GitHub Actions uses Node 20, installs dependencies with `npm install --legacy-peer-deps`, verifies the Expo config, authenticates with `EXPO_TOKEN`, and starts an EAS Android APK build.
+```bash
+npm install --legacy-peer-deps
+npx expo prebuild
+npx expo-doctor
+npx eas build --platform android --profile preview
+```
 
-## Important
-
-The previous `@infinitered/react-native-mlkit-text-recognition@4.0.0` dependency was removed because that exact package version is not currently available from npm. This prevents the `npm ERR! notarget` failure seen in GitHub Actions. OCR remains visible in the UI but shows a clear unavailable message in this build.
+GitHub Actions uses the `EXPO_TOKEN` repository secret and the existing EAS project ID.

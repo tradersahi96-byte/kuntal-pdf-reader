@@ -2,55 +2,46 @@
   "expo": {
     "name": "Kuntal Documents",
     "slug": "kuntal-documents",
-    "version": "9.2.3",
+    "version": "3.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
-    "icon": "./icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "android": {
       "package": "com.kuntal.documents",
-      "versionCode": 2,
+      "versionCode": 30,
       "permissions": [
         "CAMERA"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./icon.png",
-        "backgroundColor": "#111827"
+        "foregroundImage": "./adaptive-icon.png",
+        "backgroundColor": "#1264D9"
       }
+    },
+    "ios": {
+      "supportsTablet": true
     },
     "plugins": [
-      "expo-camera",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Kuntal Documents to use the camera to scan documents.",
+          "microphonePermission": "Allow Kuntal Documents to use the microphone.",
+          "recordAudioAndroid": false
+        }
+      ],
       "@config-plugins/react-native-blob-util",
-      "@config-plugins/react-native-pdf"
+      "@config-plugins/react-native-pdf",
+      "expo-document-picker"
     ],
     "extra": {
-      "versionName": "V9.2.3",
-      "features": [
-        "native-pdf-viewer",
-        "scanner-auto-manual",
-        "multi-page-scan",
-        "image-enhancement",
-        "merge",
-        "split",
-        "rotate",
-        "annotations",
-        "signature",
-        "watermark",
-        "share",
-        "bookmarks",
-        "pdf-info",
-        "ocr-placeholder"
-      ],
-      "stability": [
-        "expo-sdk-53-pinned-compatible-dependencies",
-        "react-native-pdf-6.7.7-with-config-plugin-11",
-        "ocr-native-dependency-removed-for-build-stability",
-        "new-architecture-disabled-for-native-pdf-compatibility"
-      ],
       "eas": {
-  "projectId": "dbb3dd38-f261-4180-8635-aeb33ba3a093"
+        "projectId": "dbb3dd38-f261-4180-8635-aeb33ba3a093"
       }
     },
-    "newArchEnabled": false,
-    "owner": "yashjat"
+    "owner": "yashjat",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "icon": "./icon.png"
   }
 }

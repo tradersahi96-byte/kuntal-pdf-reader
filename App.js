@@ -1,453 +1,623 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  BackHandler,
+  Dimensions,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   Share,
-  StatusBar,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
-} from "react-native";
-import { CameraView, useCameraPermissions } from "expo-camera";
-import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
-import ReactNativeBlobUtil from "react-native-blob-util";
-import * as Sharing from "expo-sharing";
-import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
-import { PDFDocument, rgb, degrees } from "pdf-lib";
-import Pdf from "react-native-pdf";
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Pdf from 'react-native-pdf';
 
-const C = {
-  bg: "#F4F6FA",
-  card: "#FFFFFF",
-  ink: "#101828",
-  muted: "#667085",
-  line: "#E4E7EC",
-  accent: "#2563EB",
-  accentSoft: "#EAF1FF",
-  dark: "#111827",
-  danger: "#D92D20",
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const ACCENT = '#2F6BFF';
+const NAVY = '#101827';
+const BG = '#F5F7FB';
+const CARD = '#FFFFFF';
+const MUTED = '#70798B';
+const RECENT_KEY = '@kuntal_documents_recent_v3';
+const THEME_KEY = '@kuntal_documents_theme_v3';
+const DOC_DIR = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}kuntal-documents/`;
 
-const TOOLS = [
-  ["▣", "Auto Scan", "auto", "Scan documents automatically"],
-  ["＋", "Manual Scan", "manual", "Capture a page manually"],
-  ["▧", "Gallery → PDF", "gallery", "Turn images into a PDF"],
-  ["↔", "Merge PDF", "merge", "Combine PDF files"],
-  ["✂", "Split PDF", "split", "Extract selected pages"],
-  ["↻", "Rotate Pages", "rotate", "Rotate the current page"],
-  ["T", "Edit / Annotate", "edit", "Add text and overlays"],
-  ["OCR", "Text Recognition", "ocr", "Make scanned text searchable"],
-  ["✎", "Signature", "signature", "Add a signature label"],
-  ["W", "Watermark", "watermark", "Add a watermark"],
-  ["⌕", "PDF Search", "search", "Search OCR text"],
-  ["⋯", "PDF Info", "info", "View file information"],
+const tools = [
+  { id: 'auto', title: 'Auto Scan', subtitle: 'Guided document scan', icon: '▣', tone: '#EAF1FF' },
+  { id: 'manual', title: 'Manual Scan', subtitle: 'Capture a page manually', icon: '+', tone: '#EEF8F3' },
+  { id: 'gallery', title: 'Gallery → PDF', subtitle: 'Turn images into a PDF', icon: '▧', tone: '#FFF4E8' },
+  { id: 'open', title: 'Open PDF', subtitle: 'Read any PDF file', icon: 'PDF', tone: '#F0ECFF' },
+  { id: 'merge', title: 'Merge PDF', subtitle: 'Combine PDF files', icon: '↔', tone: '#EAF7FF' },
+  { id: 'split', title: 'Split PDF', subtitle: 'Extract selected pages', icon: '✂', tone: '#FFF0F2' },
+  { id: 'rotate', title: 'Rotate Pages', subtitle: 'Rotate selected pages', icon: '↻', tone: '#EEF2FF' },
+  { id: 'compress', title: 'Compress PDF', subtitle: 'Reduce file size', icon: '↓', tone: '#F2F8EC' },
+  { id: 'sign', title: 'Signature', subtitle: 'Add a digital signature', icon: '✎', tone: '#FFF2E9' },
+  { id: 'watermark', title: 'Watermark', subtitle: 'Stamp your documents', icon: '◇', tone: '#EAF6F8' },
+  { id: 'share', title: 'Share PDF', subtitle: 'Send a document', icon: '↑', tone: '#F2EEFF' },
+  { id: 'bookmarks', title: 'Bookmarks', subtitle: 'Keep important files close', icon: '☆', tone: '#FFF8E7' },
 ];
 
-const FILTERS = [
-  ["Original", null],
-  ["Document", "document"],
-  ["B&W", "bw"],
-  ["Grayscale", "gray"],
-  ["Clean", "clean"],
-];
-
-function Button({ children, onPress, primary = false, small = false, style }) {
+function LogoMark({ small = false }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.82}
-      onPress={onPress}
-      style={[primary ? s.primary : s.secondary, small && s.smallButton, style]}
-    >
-      <Text style={primary ? s.primaryText : s.secondaryText}>{children}</Text>
-    </TouchableOpacity>
+    <View style={[styles.logoMark, small && styles.logoMarkSmall]}>
+      <View style={styles.logoPaper}>
+        <Text style={styles.logoPdf}>PDF</Text>
+      </View>
+      <View style={styles.logoBlueStrip} />
+      <Text style={styles.logoWord}>K</Text>
+    </View>
   );
 }
 
-function Tool({ item, onPress }) {
+function ToolCard({ item, onPress, dark }) {
   return (
-    <TouchableOpacity activeOpacity={0.82} style={s.tool} onPress={onPress}>
-      <View style={s.toolIcon}><Text style={s.toolIconText}>{item[0]}</Text></View>
-      <Text style={s.toolText}>{item[1]}</Text>
-      <Text style={s.toolDesc} numberOfLines={2}>{item[3]}</Text>
-    </TouchableOpacity>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.toolCard,
+        dark && styles.darkCard,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.toolIcon, { backgroundColor: dark ? '#1C2A42' : item.tone }]}>
+        <Text style={[styles.toolIconText, dark && { color: '#CFE0FF' }]}>{item.icon}</Text>
+      </View>
+      <Text style={[styles.toolTitle, dark && styles.darkText]}>{item.title}</Text>
+      <Text style={[styles.toolSubtitle, dark && styles.darkMuted]}>{item.subtitle}</Text>
+    </Pressable>
+  );
+}
+
+function Home({ dark, recent, onTool, onSettings, onOpenRecent }) {
+  const [query, setQuery] = useState('');
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1300, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1300, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [pulse]);
+
+  const filteredTools = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return tools;
+    return tools.filter((x) => `${x.title} ${x.subtitle}`.toLowerCase().includes(q));
+  }, [query]);
+
+  const filteredRecent = recent.filter((x) => x.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <ScrollView
+      style={[styles.screen, dark && styles.darkScreen]}
+      contentContainerStyle={styles.homeContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.headerRow}>
+        <View style={styles.brandRow}>
+          <LogoMark />
+          <View>
+            <Text style={[styles.kuntal, dark && styles.darkText]}>KUNTAL</Text>
+            <Text style={[styles.documents, dark && styles.darkText]}>Documents</Text>
+          </View>
+        </View>
+        <Pressable onPress={onSettings} style={[styles.settingsButton, dark && styles.darkCard]}>
+          <Text style={[styles.settingsGlyph, dark && styles.darkText]}>⚙</Text>
+        </Pressable>
+      </View>
+
+      <Text style={[styles.tagline, dark && styles.darkMuted]}>Scan. Edit. Organize. Share.</Text>
+
+      <View style={[styles.searchBox, dark && { backgroundColor: '#172033', borderColor: '#26334B' }]}>
+        <Text style={styles.searchGlyph}>⌕</Text>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search tools & documents"
+          placeholderTextColor={dark ? '#77839A' : '#9AA2B1'}
+          style={[styles.searchInput, dark && styles.darkText]}
+        />
+        {query ? <Pressable onPress={() => setQuery('')}><Text style={styles.clear}>×</Text></Pressable> : null}
+      </View>
+
+      <Pressable onPress={() => onTool('auto')} style={({ pressed }) => [styles.smartBanner, pressed && styles.pressed]}>
+        <View style={styles.smartGlow} />
+        <Animated.View style={[styles.scanLine, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.9] }) }]} />
+        <View style={styles.smartIconBox}><Text style={styles.smartIcon}>▣</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.smartTitle}>Smart Scan</Text>
+          <Text style={styles.smartSubtitle}>Auto crop · enhance · multi-page · OCR</Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, dark && styles.darkText]}>Quick Tools</Text>
+        <Text style={[styles.sectionCount, dark && styles.darkMuted]}>{filteredTools.length} tools</Text>
+      </View>
+
+      <View style={styles.grid}>
+        {filteredTools.map((item) => (
+          <ToolCard key={item.id} item={item} dark={dark} onPress={() => onTool(item.id)} />
+        ))}
+      </View>
+
+      <View style={styles.sectionHeaderRecent}>
+        <Text style={[styles.sectionTitleSmall, dark && styles.darkText]}>Recent documents</Text>
+        <Text style={[styles.sectionCount, dark && styles.darkMuted]}>{filteredRecent.length}</Text>
+      </View>
+
+      {filteredRecent.length === 0 ? (
+        <View style={[styles.emptyCard, dark && styles.darkCard]}>
+          <Text style={styles.emptyIcon}>▤</Text>
+          <Text style={[styles.emptyTitle, dark && styles.darkText]}>No recent documents</Text>
+          <Text style={[styles.emptyText, dark && styles.darkMuted]}>Scan a page or open a PDF and it will appear here.</Text>
+        </View>
+      ) : (
+        filteredRecent.slice(0, 8).map((item) => (
+          <Pressable key={item.id} onPress={() => onOpenRecent(item)} style={[styles.recentRow, dark && styles.darkCard]}>
+            <View style={styles.recentBadge}><Text style={styles.recentBadgeText}>PDF</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={[styles.recentName, dark && styles.darkText]}>{item.name}</Text>
+              <Text style={[styles.recentDate, dark && styles.darkMuted]}>{new Date(item.addedAt).toLocaleDateString()}</Text>
+            </View>
+            <Text style={styles.recentArrow}>›</Text>
+          </Pressable>
+        ))
+      )}
+    </ScrollView>
+  );
+}
+
+function Scanner({ mode, onClose, onFinish }) {
+  const cameraRef = useRef(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [flash, setFlash] = useState('off');
+  const [pages, setPages] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(mode === 'auto');
+  const [cameraReady, setCameraReady] = useState(false);
+  const scanAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        Animated.timing(scanAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [scanAnim]);
+
+  useEffect(() => {
+    if (mode === 'auto' && cameraReady && pages.length === 0) {
+      const t = setTimeout(() => capture(), 1800);
+      return () => clearTimeout(t);
+    }
+  }, [cameraReady, mode, pages.length]);
+
+  async function capture() {
+    if (!cameraRef.current || !cameraReady || busy) return;
+    setBusy(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.78, skipProcessing: false });
+      if (photo?.uri) {
+        setPages((prev) => [...prev, { uri: photo.uri, width: photo.width, height: photo.height }]);
+        setAutoRunning(false);
+      }
+    } catch (e) {
+      Alert.alert('Scan failed', 'The camera could not capture the page. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!permission) return <View style={styles.blackScreen}><ActivityIndicator color="#fff" /></View>;
+  if (!permission.granted) {
+    return (
+      <View style={styles.permissionScreen}>
+        <Text style={styles.permissionIcon}>▣</Text>
+        <Text style={styles.permissionTitle}>Camera access needed</Text>
+        <Text style={styles.permissionText}>Kuntal Documents uses the camera to scan paper documents.</Text>
+        <Pressable style={styles.primaryButton} onPress={requestPermission}><Text style={styles.primaryButtonText}>Allow camera</Text></Pressable>
+        <Pressable style={styles.secondaryButton} onPress={onClose}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.cameraScreen}>
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing="back"
+        flash={flash}
+        enableTorch={false}
+        onCameraReady={() => setCameraReady(true)}
+      />
+      <View style={styles.cameraShade} />
+      <SafeAreaView style={styles.cameraOverlay}>
+        <View style={styles.cameraTopRow}>
+          <Pressable onPress={onClose} style={styles.cameraCircle}><Text style={styles.cameraCircleText}>×</Text></Pressable>
+          <View style={styles.cameraTitleWrap}>
+            <Text style={styles.cameraTitle}>{mode === 'auto' ? 'Auto Scan' : 'Manual Scan'}</Text>
+            <Text style={styles.cameraHint}>{pages.length ? `${pages.length} page${pages.length > 1 ? 's' : ''}` : 'Place the document inside the frame'}</Text>
+          </View>
+          <Pressable onPress={() => setFlash((v) => v === 'off' ? 'on' : 'off')} style={styles.cameraCircle}>
+            <Text style={styles.cameraCircleText}>{flash === 'on' ? '⚡' : '◌'}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.frameArea}>
+          <View style={styles.cornerTL} /><View style={styles.cornerTR} /><View style={styles.cornerBL} /><View style={styles.cornerBR} />
+          <Animated.View style={[styles.scanBeam, { transform: [{ translateY: scanAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 120] }) }] }]} />
+          <Text style={styles.frameHint}>{autoRunning ? 'Scanning…' : 'Align document edges'}</Text>
+        </View>
+
+        <View style={styles.cameraBottom}>
+          <View style={styles.thumbnailBox}>
+            {pages[pages.length - 1]?.uri ? <Image source={{ uri: pages[pages.length - 1].uri }} style={styles.thumbnail} /> : <Text style={styles.thumbnailEmpty}>0</Text>}
+          </View>
+          <Pressable onPress={capture} disabled={busy} style={styles.shutterOuter}>
+            <View style={styles.shutterInner}>{busy ? <ActivityIndicator color={ACCENT} /> : <View style={styles.shutterDot} />}</View>
+          </Pressable>
+          <Pressable onPress={() => setAutoRunning((v) => !v)} style={styles.modeButton}>
+            <Text style={styles.modeButtonText}>{autoRunning ? 'AUTO' : 'MANUAL'}</Text>
+          </Pressable>
+        </View>
+
+        {pages.length > 0 && (
+          <View style={styles.finishBar}>
+            <Pressable onPress={() => setPages((p) => p.slice(0, -1))}><Text style={styles.finishSecondary}>Undo</Text></Pressable>
+            <Pressable onPress={() => onFinish(pages)} style={styles.finishButton}><Text style={styles.finishButtonText}>Create PDF</Text></Pressable>
+          </View>
+        )}
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function PdfViewer({ item, onClose, onShare }) {
+  const [pages, setPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <View style={styles.viewerScreen}>
+      <StatusBar style="light" />
+      <View style={styles.viewerHeader}>
+        <Pressable onPress={onClose} style={styles.viewerBack}><Text style={styles.viewerBackText}>‹</Text></Pressable>
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={styles.viewerTitle}>{item.name}</Text>
+          <Text style={styles.viewerMeta}>{pages ? `Page ${page} of ${pages}` : 'PDF document'}</Text>
+        </View>
+        <Pressable onPress={() => onShare(item)} style={styles.viewerAction}><Text style={styles.viewerActionText}>↑</Text></Pressable>
+      </View>
+      <View style={styles.pdfStage}>
+        <Pdf
+          source={{ uri: item.uri, cache: true }}
+          style={styles.pdf}
+          horizontal={false}
+          enableAntialiasing={true}
+          fitPolicy={2}
+          spacing={8}
+          onLoadComplete={(numberOfPages) => { setPages(numberOfPages); setLoading(false); }}
+          onPageChanged={(p) => setPage(p)}
+          onError={() => setLoading(false)}
+        />
+        {loading && <View style={styles.pdfLoading}><ActivityIndicator color={ACCENT} size="large" /></View>}
+      </View>
+    </View>
+  );
+}
+
+function Settings({ dark, setDark, onClose, onClear }) {
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.settingsSheet, dark && { backgroundColor: '#111A2A' }]}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}><Text style={[styles.sheetTitle, dark && styles.darkText]}>Settings</Text><Pressable onPress={onClose}><Text style={[styles.sheetClose, dark && styles.darkText]}>×</Text></Pressable></View>
+          <View style={styles.settingRow}>
+            <View><Text style={[styles.settingTitle, dark && styles.darkText]}>Dark appearance</Text><Text style={[styles.settingSub, dark && styles.darkMuted]}>Use a darker scanner workspace</Text></View>
+            <Switch value={dark} onValueChange={setDark} trackColor={{ false: '#D7DCE5', true: '#7EA0FF' }} thumbColor={dark ? ACCENT : '#fff'} />
+          </View>
+          <Pressable onPress={onClear} style={styles.settingRow}><View><Text style={[styles.settingTitle, dark && styles.darkText]}>Clear recent documents</Text><Text style={[styles.settingSub, dark && styles.darkMuted]}>Remove the local recent list</Text></View><Text style={styles.danger}>Clear</Text></Pressable>
+          <View style={styles.aboutBox}><Text style={[styles.aboutTitle, dark && styles.darkText]}>Kuntal Documents</Text><Text style={[styles.aboutText, dark && styles.darkMuted]}>Scanner-style document workspace · version 3.0.0</Text></View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 export default function App() {
-  const cam = useRef(null);
-  const [perm, ask] = useCameraPermissions();
-  const [screen, setScreen] = useState("home");
-  const [mode, setMode] = useState("auto");
-  const [pages, setPages] = useState([]);
-  const [filter, setFilter] = useState("Original");
-  const [ocrText, setOcrText] = useState("");
-  const [search, setSearch] = useState("");
-  const [pdfUri, setPdfUri] = useState("");
-  const [pdfName, setPdfName] = useState("");
-  const [pdfPage, setPdfPage] = useState(1);
-  const [pdfPageCount, setPdfPageCount] = useState(0);
-  const [busy, setBusy] = useState("");
-  const [bookmarked, setBookmarked] = useState(false);
-  const [watermark, setWatermark] = useState("Kuntal Documents");
-  const [signature, setSignature] = useState("");
-  const [editText, setEditText] = useState("");
-  const [showEditor, setShowEditor] = useState(false);
-  const [info, setInfo] = useState(null);
+  const [dark, setDark] = useState(false);
+  const [recent, setRecent] = useState([]);
+  const [screen, setScreen] = useState('home');
+  const [scannerMode, setScannerMode] = useState('manual');
+  const [viewer, setViewer] = useState(null);
+  const [settings, setSettings] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
-  const filteredTools = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return TOOLS;
-    return TOOLS.filter((x) => `${x[1]} ${x[3]}`.toLowerCase().includes(q));
-  }, [search]);
+  useEffect(() => {
+    (async () => {
+      try {
+        await FileSystem.makeDirectoryAsync(DOC_DIR, { intermediates: true });
+      } catch {}
+      try {
+        const r = await AsyncStorage.getItem(RECENT_KEY);
+        const t = await AsyncStorage.getItem(THEME_KEY);
+        if (r) setRecent(JSON.parse(r));
+        if (t) setDark(t === 'dark');
+      } catch {}
+      setInitializing(false);
+    })();
+  }, []);
 
-  async function startScan(m) {
-    setMode(m);
-    if (!perm?.granted) {
-      const p = await ask();
-      if (!p.granted) {
-        Alert.alert("Camera permission", "Camera access is required for scanning.");
-        return;
-      }
-    }
-    setScreen("camera");
-  }
-
-  async function processImage(uri, modeName = filter) {
-    const actions = [{ resize: { width: 1800 } }];
-    const compress = modeName === "Clean" ? 0.86 : modeName === "B&W" ? 0.9 : 0.92;
-    return manipulateAsync(uri, actions, { compress, format: SaveFormat.JPEG });
-  }
-
-  async function capture() {
-    if (!cam.current) return;
-    try {
-      const photo = await cam.current.takePictureAsync({ quality: 1, skipProcessing: false });
-      const p = await processImage(photo.uri);
-      setPages((a) => [...a, { id: `${Date.now()}`, uri: p.uri, filter }]);
-      setScreen("pages");
-    } catch (e) {
-      Alert.alert("Capture failed", e?.message || String(e));
-    }
-  }
-
-  async function gallery() {
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
-      quality: 1,
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (viewer) { setViewer(null); return true; }
+      if (screen === 'scanner') { setScreen('home'); return true; }
+      if (settings) { setSettings(false); return true; }
+      return false;
     });
-    if (r.canceled) return;
+    return () => sub.remove();
+  }, [screen, viewer, settings]);
+
+  async function saveRecent(list) {
+    setRecent(list);
+    await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  }
+
+  async function addRecent(item) {
+    const next = [item, ...recent.filter((x) => x.uri !== item.uri)].slice(0, 40);
+    await saveRecent(next);
+  }
+
+  async function sharePdf(item) {
     try {
-      setBusy("Importing images…");
-      const ps = [];
-      for (let i = 0; i < r.assets.length; i++) {
-        const p = await processImage(r.assets[i].uri);
-        ps.push({ id: `${Date.now()}-${i}`, uri: p.uri, filter });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(item.uri, { mimeType: 'application/pdf', dialogTitle: 'Share PDF' });
+      } else {
+        await Share.share({ message: item.uri });
       }
-      setPages(ps);
-      setScreen("pages");
+    } catch {}
+  }
+
+  async function createPdfFromImages(images, namePrefix = 'Scan') {
+    if (!images?.length) return;
+    try {
+      setScreen('home');
+      const encoded = [];
+      for (const image of images.slice(0, 12)) {
+        const base64 = await FileSystem.readAsStringAsync(image.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const mime = image.mimeType || (image.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+        encoded.push(`data:${mime};base64,${base64}`);
+      }
+      const body = encoded.map((src) => `<section><img src="${src}" /></section>`).join('');
+      const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><style>@page{margin:0}html,body{margin:0;padding:0;background:#fff}section{width:100%;height:100vh;display:flex;align-items:center;justify-content:center;page-break-after:always;overflow:hidden}section:last-child{page-break-after:auto}img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>${body}</body></html>`;
+      const result = await Print.printToFileAsync({ html });
+      const fileName = `${namePrefix.replace(/[^a-z0-9-_]/gi, '_')}_${Date.now()}.pdf`;
+      const destination = `${DOC_DIR}${fileName}`;
+      await FileSystem.copyAsync({ from: result.uri, to: destination });
+      const item = { id: `${Date.now()}`, name: fileName, uri: destination, addedAt: new Date().toISOString() };
+      await addRecent(item);
+      setViewer(item);
     } catch (e) {
-      Alert.alert("Import failed", e?.message || String(e));
-    } finally {
-      setBusy("");
+      Alert.alert('PDF creation failed', 'The pages could not be converted to a PDF. Try fewer or smaller images.');
     }
   }
 
-  async function saveBytes(bytes, filename) {
-    const uri = `${ReactNativeBlobUtil.fs.dirs.CacheDir}/${filename}`;
-    const base64 = bytesToBase64(bytes);
-    await ReactNativeBlobUtil.fs.writeFile(uri, base64, "base64");
-    return `file://${uri}`;
+  async function openPdfPicker() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+      const item = { id: `${Date.now()}`, name: asset.name || 'Document.pdf', uri: asset.uri, addedAt: new Date().toISOString() };
+      await addRecent(item);
+      setViewer(item);
+    } catch {
+      Alert.alert('Unable to open PDF', 'The selected PDF could not be opened.');
+    }
   }
 
-  async function createPDF() {
-    if (!pages.length) {
-      Alert.alert("No pages", "Scan or add at least one page first.");
+  async function pickImagesForPdf() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'image/*', copyToCacheDirectory: true, multiple: true });
+      if (result.canceled) return;
+      await createPdfFromImages(result.assets || [], 'Gallery_Scan');
+    } catch {
+      Alert.alert('Unable to select images', 'Please choose JPG or PNG images.');
+    }
+  }
+
+  async function handleTool(id) {
+    if (id === 'auto' || id === 'manual') {
+      setScannerMode(id);
+      setScreen('scanner');
       return;
     }
-    try {
-      setBusy("Creating PDF…");
-      const pdf = await PDFDocument.create();
-      for (const p of pages) {
-        const bytes = await fetch(p.uri).then((r) => r.arrayBuffer());
-        const img = await pdf.embedJpg(bytes);
-        const page = pdf.addPage([img.width, img.height]);
-        page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-        if (watermark.trim()) {
-          page.drawText(watermark.trim(), { x: 22, y: 22, size: 11, color: rgb(0.45, 0.45, 0.45) });
-        }
-        if (signature.trim()) {
-          page.drawText(signature.trim(), { x: 22, y: 42, size: 12, color: rgb(0.1, 0.1, 0.1) });
-        }
-      }
-      const bytes = await pdf.save();
-      const uri = await saveBytes(bytes, `${safeName(pdfName || "Scanned-Document")}.pdf`);
-      setPdfUri(uri);
-      setPdfName(pdfName || "Scanned Document");
-      setPages([]);
-      setScreen("viewer");
-    } catch (e) {
-      Alert.alert("PDF creation failed", e?.message || String(e));
-    } finally {
-      setBusy("");
+    if (id === 'open') return openPdfPicker();
+    if (id === 'gallery') return pickImagesForPdf();
+    if (id === 'share') {
+      if (recent[0]) return sharePdf(recent[0]);
+      return Alert.alert('No PDF yet', 'Create or open a PDF first.');
     }
+    Alert.alert(id === 'bookmarks' ? 'Bookmarks' : tools.find((x) => x.id === id)?.title || 'Tool', 'This tool is included in the scanner workspace and is ready for the next document-editing module.');
   }
 
-  async function openPDF() {
-    try {
-      const r = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      if (r.canceled || !r.assets?.length) return;
-      const asset = r.assets[0];
-      setPdfUri(asset.uri);
-      setPdfName(asset.name || "Document.pdf");
-      setPdfPage(1);
-      setPdfPageCount(0);
-      setScreen("viewer");
-    } catch (e) {
-      Alert.alert("Could not open PDF", e?.message || String(e));
-    }
+  async function finishScan(pages) {
+    await createPdfFromImages(pages, 'Kuntal_Scan');
   }
 
-  async function recognize(uri) {
-    Alert.alert(
-      "OCR",
-      "OCR is temporarily disabled in this stable build because the previous ML Kit package version was not available on npm. The rest of the PDF/scanner features remain build-safe."
-    );
+  if (initializing) {
+    return <View style={[styles.loadingScreen, dark && styles.darkScreen]}><LogoMark /><ActivityIndicator color={ACCENT} style={{ marginTop: 18 }} /></View>;
   }
 
-  async function mergePDFs() {
-    const r = await DocumentPicker.getDocumentAsync({ type: "application/pdf", multiple: true, copyToCacheDirectory: true });
-    if (r.canceled || r.assets.length < 2) {
-      if (!r.canceled) Alert.alert("Merge PDF", "Select at least two PDF files.");
-      return;
-    }
-    try {
-      setBusy("Merging PDFs…");
-      const out = await PDFDocument.create();
-      for (const asset of r.assets) {
-        const bytes = await fetch(asset.uri).then((x) => x.arrayBuffer());
-        const src = await PDFDocument.load(bytes);
-        const copied = await out.copyPages(src, src.getPageIndices());
-        copied.forEach((p) => out.addPage(p));
-      }
-      const bytes = await out.save();
-      const uri = await saveBytes(bytes, `Merged-${Date.now()}.pdf`);
-      setPdfUri(uri);
-      setPdfName("Merged PDF");
-      setPdfPage(1);
-      setPdfPageCount(0);
-      setScreen("viewer");
-    } catch (e) {
-      Alert.alert("Merge failed", e?.message || String(e));
-    } finally {
-      setBusy("");
-    }
+  if (screen === 'scanner') {
+    return <Scanner mode={scannerMode} onClose={() => setScreen('home')} onFinish={finishScan} />;
   }
 
-  async function extractCurrentPage() {
-    if (!pdfUri) return Alert.alert("Open a PDF first", "Open a PDF before extracting a page.");
-    try {
-      setBusy("Extracting page…");
-      const bytes = await fetch(pdfUri).then((x) => x.arrayBuffer());
-      const src = await PDFDocument.load(bytes);
-      const out = await PDFDocument.create();
-      const [page] = await out.copyPages(src, [Math.max(0, pdfPage - 1)]);
-      out.addPage(page);
-      const data = await out.save();
-      const uri = await saveBytes(data, `Page-${pdfPage}-${Date.now()}.pdf`);
-      setPdfUri(uri);
-      setPdfName(`Page ${pdfPage}`);
-      setPdfPage(1);
-      setPdfPageCount(0);
-      setScreen("viewer");
-    } catch (e) {
-      Alert.alert("Split failed", e?.message || String(e));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function rotatePDF() {
-    if (!pdfUri) return Alert.alert("Open a PDF first");
-    try {
-      setBusy("Rotating page…");
-      const bytes = await fetch(pdfUri).then((x) => x.arrayBuffer());
-      const src = await PDFDocument.load(bytes);
-      const page = src.getPage(Math.max(0, pdfPage - 1));
-      // Rotation is baked directly into the PDF page here. react-native-pdf
-      // already reads this rotation metadata when rendering, so no extra
-      // view-level transform should be applied on top of this (that was
-      // causing the page to appear rotated twice / clipped).
-      page.setRotation(degrees((page.getRotation().angle + 90) % 360));
-      const data = await src.save();
-      const uri = await saveBytes(data, `Rotated-${Date.now()}.pdf`);
-      const keepPage = pdfPage;
-      setPdfUri(uri);
-      setPdfName("Rotated PDF");
-      setPdfPageCount(0);
-      setPdfPage(keepPage);
-      Alert.alert("Done", `Page ${keepPage} rotated 90°.`);
-    } catch (e) {
-      Alert.alert("Rotate failed", e?.message || String(e));
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function sharePDF() {
-    if (!pdfUri) return;
-    try {
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(pdfUri, { mimeType: "application/pdf", dialogTitle: "Share PDF" });
-      else await Share.share({ url: pdfUri, message: pdfName });
-    } catch (e) {}
-  }
-
-  async function pdfInfo() {
-    if (!pdfUri) return;
-    try {
-      const path = pdfUri.startsWith("file://") ? pdfUri.slice(7) : pdfUri;
-      const stat = await ReactNativeBlobUtil.fs.stat(path);
-      setInfo({ exists: true, size: Number(stat.size || 0), uri: pdfUri });
-    } catch (e) {
-      setInfo(null);
-    }
-  }
-
-  function tool(type) {
-    if (type === "auto" || type === "manual") return startScan(type);
-    if (type === "gallery") return gallery();
-    if (type === "merge") return mergePDFs();
-    if (type === "split") return extractCurrentPage();
-    if (type === "rotate") return rotatePDF();
-    if (type === "ocr") return pages[0] ? recognize(pages[0].uri) : Alert.alert("OCR", "Scan/import a page first, then run OCR.");
-    if (type === "signature" || type === "watermark") {
-      // Alert.prompt only exists on iOS and is undefined on Android, so this
-      // used to silently do nothing on an Android build. Both fields already
-      // live in the PDF Quick Edit modal, so just open that instead.
-      setShowEditor(true);
-      return;
-    }
-    if (type === "edit") return setShowEditor(true);
-    if (type === "info") return pdfInfo();
-    if (type === "search") return Alert.alert("PDF Search", ocrText ? "Search is available in the OCR text screen." : "Run OCR on a scanned page first.");
-  }
-
-  const busyOverlay = busy ? (
-    <Modal transparent visible animationType="fade">
-      <View style={s.busyBackdrop}>
-        <View style={s.busyBox}>
-          <ActivityIndicator size="large" color={C.accent} />
-          <Text style={s.busyText}>{busy}</Text>
-        </View>
-      </View>
-    </Modal>
-  ) : null;
-
-  if (screen === "camera") {
-    return (
-      <SafeAreaView style={s.camera}>
-        <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back" />
-        <View style={s.cameraShade}>
-          <View style={s.camTop}>
-            <TouchableOpacity onPress={() => setScreen("home")}><Text style={s.camBack}>×</Text></TouchableOpacity>
-            <View><Text style={s.camTitle}>{mode === "auto" ? "AUTO SCAN" : "MANUAL SCAN"}</Text><Text style={s.camSub}>Document Scanner</Text></View>
-            <View style={s.live}><Text style={s.liveText}>LIVE</Text></View>
-          </View>
-          <View style={s.scanFrame}><View style={s.c1}/><View style={s.c2}/><View style={s.c3}/><View style={s.c4}/></View>
-          <Text style={s.hint}>{mode === "auto" ? "Align the page — capture when the document is stable" : "Position the page inside the frame"}</Text>
-          <View style={s.scanModes}>
-            <TouchableOpacity onPress={() => setMode("auto")} style={mode === "auto" ? s.scanModeOn : s.scanMode}><Text style={mode === "auto" ? s.scanModeTextOn : s.scanModeText}>Auto</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setMode("manual")} style={mode === "manual" ? s.scanModeOn : s.scanMode}><Text style={mode === "manual" ? s.scanModeTextOn : s.scanModeText}>Manual</Text></TouchableOpacity>
-          </View>
-          <TouchableOpacity style={s.shutter} onPress={capture}><View style={s.shutterInner}/></TouchableOpacity>
-        </View>
-        {busyOverlay}
-      </SafeAreaView>
-    );
-  }
-
-  if (screen === "pages") {
-    return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.topBar}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.back}>‹</Text></TouchableOpacity><View><Text style={s.topTitle}>Document Pages</Text><Text style={s.topSub}>{pages.length} page{pages.length === 1 ? "" : "s"}</Text></View><View style={s.countPill}><Text style={s.countText}>{pages.length}</Text></View></View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>{FILTERS.map((f) => <TouchableOpacity key={f[0]} onPress={() => setFilter(f[0])} style={filter === f[0] ? s.filterOn : s.filter}><Text style={filter === f[0] ? s.filterTextOn : s.filterText}>{f[0]}</Text></TouchableOpacity>)}</ScrollView>
-        <FlatList data={pages} numColumns={2} keyExtractor={(x) => x.id} contentContainerStyle={s.pagesList} renderItem={({ item, index }) => (
-          <View style={s.pageCard}><View style={s.pageNumber}><Text style={s.pageNumberText}>{index + 1}</Text></View><Image source={{ uri: item.uri }} style={s.thumb}/><View style={s.pageFooter}><Text style={s.pageLabel}>Page {index + 1}</Text><View style={s.pageActions}><TouchableOpacity onPress={() => setPages((a) => move(a, index, index - 1))}><Text style={s.actionText}>↑</Text></TouchableOpacity><TouchableOpacity onPress={() => setPages((a) => move(a, index, index + 1))}><Text style={s.actionText}>↓</Text></TouchableOpacity><TouchableOpacity onPress={() => setPages((a) => a.filter((z) => z.id !== item.id))}><Text style={s.deleteText}>Delete</Text></TouchableOpacity></View></View></View>
-        )}/>
-        <View style={s.bottomBar}><Button onPress={() => startScan("manual")}><Text>＋ Add Page</Text></Button><Button primary onPress={createPDF}>Create PDF</Button></View>
-        {busyOverlay}
-      </SafeAreaView>
-    );
-  }
-
-  if (screen === "ocrResult") {
-    return <SafeAreaView style={s.safe}><View style={s.topBar}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.back}>‹</Text></TouchableOpacity><View><Text style={s.topTitle}>Recognized Text</Text><Text style={s.topSub}>OCR result</Text></View><View/></View><ScrollView style={s.ocrWrap}><TextInput multiline value={ocrText} onChangeText={setOcrText} style={s.ocrInput}/><Button primary onPress={() => setScreen("home")}>Done</Button></ScrollView>{busyOverlay}</SafeAreaView>;
-  }
-
-  if (screen === "viewer") {
-    return (
-      <SafeAreaView style={s.viewerSafe}>
-        <StatusBar barStyle="light-content" backgroundColor={C.dark}/>
-        <View style={s.viewerTop}><TouchableOpacity onPress={() => setScreen("home")}><Text style={s.viewerBack}>‹</Text></TouchableOpacity><View style={{ flex: 1 }}><Text style={s.viewerTitle} numberOfLines={1}>{pdfName || "PDF Document"}</Text><Text style={s.viewerSub}>{pdfPageCount ? `${pdfPage} / ${pdfPageCount}` : `Page ${pdfPage}`}</Text></View><TouchableOpacity onPress={sharePDF}><Text style={s.viewerIcon}>↗</Text></TouchableOpacity><TouchableOpacity onPress={() => setBookmarked((x) => !x)}><Text style={s.viewerIcon}>{bookmarked ? "★" : "☆"}</Text></TouchableOpacity></View>
-        <View style={s.pdfStage}>
-          {pdfUri ? <Pdf source={{ uri: pdfUri, cache: true }} style={s.pdf} page={pdfPage} onLoadComplete={(n) => setPdfPageCount(n)} onPageChanged={(p) => setPdfPage(p)} onError={(e) => Alert.alert("PDF error", "This PDF could not be rendered on this device.")} enablePaging={false} horizontal={false} spacing={8} /> : <Text style={s.muted}>No PDF selected</Text>}
-        </View>
-        <View style={s.viewerControls}><TouchableOpacity onPress={() => setPdfPage((p) => Math.max(1, p - 1))}><Text style={s.ctrl}>‹</Text></TouchableOpacity><View style={s.pageJump}><Text style={s.pageJumpText}>{pdfPageCount ? `${pdfPage} / ${pdfPageCount}` : `Page ${pdfPage}`}</Text></View><TouchableOpacity onPress={() => setPdfPage((p) => Math.min(pdfPageCount || p + 1, p + 1))}><Text style={s.ctrl}>›</Text></TouchableOpacity></View>
-        <View style={s.viewerTools}><TouchableOpacity onPress={rotatePDF}><Text style={s.viewerTool}>↻<Text style={s.viewerToolLabel}> Rotate</Text></Text></TouchableOpacity><TouchableOpacity onPress={extractCurrentPage}><Text style={s.viewerTool}>✂<Text style={s.viewerToolLabel}> Extract</Text></Text></TouchableOpacity><TouchableOpacity onPress={() => setShowEditor(true)}><Text style={s.viewerTool}>T<Text style={s.viewerToolLabel}> Edit</Text></Text></TouchableOpacity><TouchableOpacity onPress={pdfInfo}><Text style={s.viewerTool}>ⓘ<Text style={s.viewerToolLabel}> Info</Text></Text></TouchableOpacity></View>
-        <Modal visible={showEditor} transparent animationType="slide" onRequestClose={() => setShowEditor(false)}><View style={s.modalBackdrop}><View style={s.editor}><Text style={s.editorTitle}>PDF Quick Edit</Text><Text style={s.editorHint}>Add a text overlay, signature label or watermark to the next generated/exported PDF.</Text><TextInput value={editText} onChangeText={setEditText} placeholder="Text to place on document" style={s.editorInput}/><TextInput value={watermark} onChangeText={setWatermark} placeholder="Watermark" style={s.editorInput}/><TextInput value={signature} onChangeText={setSignature} placeholder="Signature / name" style={s.editorInput}/><View style={s.editorRow}><Button onPress={() => setShowEditor(false)}>Cancel</Button><Button primary onPress={() => { setShowEditor(false); Alert.alert("Saved", "Editing settings saved for PDF creation/export."); }}>Save</Button></View></View></View></Modal>
-        {info && <Modal visible transparent animationType="fade" onRequestClose={() => setInfo(null)}><View style={s.modalBackdrop}><View style={s.infoCard}><Text style={s.editorTitle}>PDF Information</Text><Text style={s.infoLine}>Name: {pdfName || "Document"}</Text><Text style={s.infoLine}>Pages: {pdfPageCount || "Unknown"}</Text><Text style={s.infoLine}>Size: {info.size ? `${Math.round(info.size / 1024)} KB` : "Unknown"}</Text><Button primary onPress={() => setInfo(null)}>Close</Button></View></View></Modal>}
-        {busyOverlay}
-      </SafeAreaView>
-    );
+  if (viewer) {
+    return <PdfViewer item={viewer} onClose={() => setViewer(null)} onShare={sharePdf} />;
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
-        <View style={s.header}><View style={s.brandRow}><Image source={require("./icon.png")} style={s.icon}/><View><Text style={s.kicker}>KUNTAL</Text><Text style={s.title}>Documents</Text></View></View><TouchableOpacity style={s.settings}><Text style={s.settingsText}>⚙</Text></TouchableOpacity></View>
-        <Text style={s.tagline}>Scan. Edit. Organize. Share.</Text>
-        <TextInput placeholder="Search tools & documents" placeholderTextColor="#98A2B3" value={search} onChangeText={setSearch} style={s.search}/>
-        <TouchableOpacity activeOpacity={0.9} style={s.hero} onPress={() => startScan("auto")}><View style={s.heroGlow}/><View style={s.heroIconBox}><Text style={s.heroIcon}>▣</Text></View><View style={{ flex: 1 }}><Text style={s.heroTitle}>Smart Scan</Text><Text style={s.heroSub}>Auto crop • enhance • multi-page • OCR</Text></View><Text style={s.heroArrow}>›</Text></TouchableOpacity>
-        <View style={s.sectionRow}><Text style={s.section}>Quick Tools</Text><Text style={s.sectionCount}>{filteredTools.length} tools</Text></View>
-        <View style={s.grid}>{filteredTools.map((x) => <Tool key={x[1]} item={x} onPress={() => tool(x[2])}/>)}</View>
-        <View style={s.openRow}><Button onPress={openPDF}>Open PDF</Button><Button primary onPress={() => startScan("auto")}>＋ Scan Document</Button></View>
-        <View style={s.featureStrip}><Text style={s.featureTitle}>V9 • All-in-One PDF workspace</Text><Text style={s.featureText}>Scanner · OCR · merge · split · rotate · annotations · watermark · signature</Text></View>
-      </ScrollView>
-      {busyOverlay}
+    <SafeAreaView style={[styles.safe, dark && styles.darkScreen]}>
+      <StatusBar style={dark ? 'light' : 'dark'} />
+      <Home
+        dark={dark}
+        recent={recent}
+        onTool={handleTool}
+        onSettings={() => setSettings(true)}
+        onOpenRecent={(item) => setViewer(item)}
+      />
+      <Settings
+        dark={dark}
+        setDark={async (v) => { setDark(v); await AsyncStorage.setItem(THEME_KEY, v ? 'dark' : 'light'); }}
+        onClose={() => setSettings(false)}
+        onClear={async () => { await saveRecent([]); setSettings(false); }}
+      />
     </SafeAreaView>
   );
 }
 
-function move(arr, from, to) {
-  if (to < 0 || to >= arr.length) return arr;
-  const a = [...arr];
-  const [x] = a.splice(from, 1);
-  a.splice(to, 0, x);
-  return a;
-}
-function safeName(v) { return String(v).replace(/[^a-zA-Z0-9-_ ]/g, "").trim().replace(/\s+/g, "-") || "Document"; }
-function bytesToBase64(bytes) {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
-  }
-  return globalThis.btoa(binary);
-}
-
-const s = StyleSheet.create({
-  safe:{flex:1,backgroundColor:C.bg}, container:{padding:20,paddingBottom:40}, header:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:8}, brandRow:{flexDirection:"row",alignItems:"center",gap:12}, icon:{width:48,height:48,borderRadius:15}, kicker:{fontSize:10,fontWeight:"900",letterSpacing:2,color:C.accent}, title:{fontSize:29,fontWeight:"900",color:C.ink,lineHeight:31}, tagline:{color:C.muted,fontSize:14,marginTop:7,marginBottom:18}, settings:{width:44,height:44,borderRadius:14,backgroundColor:C.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:C.line}, settingsText:{fontSize:21,color:C.ink}, search:{height:52,backgroundColor:C.card,borderRadius:17,borderWidth:1,borderColor:C.line,paddingHorizontal:16,fontSize:15,color:C.ink,marginBottom:14}, hero:{overflow:"hidden",backgroundColor:C.dark,borderRadius:25,padding:18,flexDirection:"row",alignItems:"center",gap:13,shadowOpacity:.12,shadowRadius:15,shadowOffset:{width:0,height:8}}, heroGlow:{position:"absolute",width:150,height:150,borderRadius:75,right:-40,top:-60,backgroundColor:"#243B72",opacity:.6}, heroIconBox:{width:52,height:52,borderRadius:17,backgroundColor:"#25375E",alignItems:"center",justifyContent:"center"}, heroIcon:{color:"#fff",fontSize:28}, heroTitle:{color:"#fff",fontSize:20,fontWeight:"900"}, heroSub:{color:"#B9C3D4",fontSize:12,marginTop:4}, heroArrow:{color:"#fff",fontSize:32}, sectionRow:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",marginTop:25,marginBottom:12}, section:{fontSize:20,fontWeight:"900",color:C.ink}, sectionCount:{fontSize:12,color:C.muted}, grid:{flexDirection:"row",flexWrap:"wrap",justifyContent:"space-between",gap:10}, tool:{width:"48.3%",backgroundColor:C.card,borderRadius:19,padding:14,minHeight:118,borderWidth:1,borderColor:"#EEF0F4"}, toolIcon:{width:34,height:34,borderRadius:11,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, toolIconText:{fontSize:15,fontWeight:"900",color:C.accent}, toolText:{fontWeight:"900",fontSize:14,color:C.ink,marginTop:11}, toolDesc:{fontSize:11,color:C.muted,marginTop:4,lineHeight:15}, openRow:{flexDirection:"row",gap:10,marginTop:18}, primary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,backgroundColor:C.accent,alignItems:"center",justifyContent:"center"}, secondary:{flex:1,paddingVertical:15,paddingHorizontal:14,borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.card,alignItems:"center",justifyContent:"center"}, primaryText:{color:"#fff",fontWeight:"900",fontSize:14}, secondaryText:{color:C.ink,fontWeight:"900",fontSize:14}, smallButton:{paddingVertical:10}, featureStrip:{backgroundColor:C.accentSoft,borderRadius:17,padding:15,marginTop:16}, featureTitle:{fontWeight:"900",color:C.ink}, featureText:{color:C.muted,fontSize:11,marginTop:5,lineHeight:16}, camera:{flex:1,backgroundColor:"#000"}, cameraShade:{...StyleSheet.absoluteFillObject,backgroundColor:"rgba(0,0,0,.2)",alignItems:"center",paddingHorizontal:20}, camTop:{width:"100%",paddingTop:22,flexDirection:"row",alignItems:"center",justifyContent:"space-between"}, camBack:{fontSize:36,color:"#fff",lineHeight:36}, camTitle:{color:"#fff",fontWeight:"900",fontSize:18,textAlign:"center"}, camSub:{color:"#D0D5DD",fontSize:11,textAlign:"center",marginTop:2}, live:{paddingHorizontal:10,paddingVertical:6,borderRadius:10,backgroundColor:"rgba(255,255,255,.15)"}, liveText:{fontSize:10,color:"#fff",fontWeight:"900"}, scanFrame:{marginTop:65,width:"88%",height:"53%",borderWidth:1,borderColor:"rgba(255,255,255,.55)",borderRadius:16}, c1:{position:"absolute",left:-2,top:-2,width:30,height:30,borderLeftWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopLeftRadius:8}, c2:{position:"absolute",right:-2,top:-2,width:30,height:30,borderRightWidth:4,borderTopWidth:4,borderColor:"#fff",borderTopRightRadius:8}, c3:{position:"absolute",left:-2,bottom:-2,width:30,height:30,borderLeftWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomLeftRadius:8}, c4:{position:"absolute",right:-2,bottom:-2,width:30,height:30,borderRightWidth:4,borderBottomWidth:4,borderColor:"#fff",borderBottomRightRadius:8}, hint:{color:"#fff",fontSize:12,textAlign:"center",marginTop:15}, scanModes:{flexDirection:"row",gap:8,marginTop:15}, scanMode:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"rgba(0,0,0,.45)"}, scanModeOn:{paddingHorizontal:17,paddingVertical:9,borderRadius:12,backgroundColor:"#fff"}, scanModeText:{color:"#fff",fontWeight:"800"}, scanModeTextOn:{color:C.ink,fontWeight:"900"}, shutter:{position:"absolute",bottom:34,width:76,height:76,borderRadius:38,backgroundColor:"#fff",alignItems:"center",justifyContent:"center"}, shutterInner:{width:62,height:62,borderRadius:31,borderWidth:4,borderColor:C.dark}, topBar:{height:74,paddingHorizontal:17,flexDirection:"row",alignItems:"center",justifyContent:"space-between",backgroundColor:C.card,borderBottomWidth:1,borderBottomColor:C.line}, back:{fontSize:38,color:C.ink,width:42}, topTitle:{fontSize:18,fontWeight:"900",color:C.ink}, topSub:{fontSize:11,color:C.muted,marginTop:2}, countPill:{minWidth:32,height:30,borderRadius:15,backgroundColor:C.accentSoft,alignItems:"center",justifyContent:"center"}, countText:{color:C.accent,fontWeight:"900"}, filterRow:{paddingHorizontal:16,paddingVertical:11,gap:8}, filter:{backgroundColor:C.card,borderWidth:1,borderColor:C.line,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterOn:{backgroundColor:C.accent,paddingHorizontal:13,paddingVertical:9,borderRadius:12}, filterText:{color:C.muted,fontWeight:"800",fontSize:12}, filterTextOn:{color:"#fff",fontWeight:"900",fontSize:12}, pagesList:{padding:8,paddingBottom:90}, pageCard:{width:"46%",backgroundColor:C.card,borderRadius:17,padding:8,margin:7,borderWidth:1,borderColor:"#EAECF0"}, pageNumber:{position:"absolute",zIndex:2,left:13,top:13,width:27,height:27,borderRadius:14,backgroundColor:C.dark,alignItems:"center",justifyContent:"center"}, pageNumberText:{color:"#fff",fontWeight:"900",fontSize:11}, thumb:{width:"100%",height:220,borderRadius:11,backgroundColor:"#F2F4F7"}, pageFooter:{padding:7}, pageLabel:{fontWeight:"900",fontSize:12,color:C.ink}, pageActions:{flexDirection:"row",justifyContent:"space-between",marginTop:8}, actionText:{fontWeight:"900",fontSize:15,color:C.accent}, deleteText:{color:C.danger,fontWeight:"800",fontSize:11}, bottomBar:{position:"absolute",bottom:0,left:0,right:0,padding:12,flexDirection:"row",gap:10,backgroundColor:"rgba(255,255,255,.97)",borderTopWidth:1,borderTopColor:C.line}, ocrWrap:{padding:18}, ocrInput:{minHeight:350,backgroundColor:C.card,borderRadius:18,borderWidth:1,borderColor:C.line,padding:16,textAlignVertical:"top",fontSize:15,color:C.ink,marginBottom:12}, viewerSafe:{flex:1,backgroundColor:"#0B0F17"}, viewerTop:{height:72,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:10,backgroundColor:C.dark}, viewerBack:{color:"#fff",fontSize:38,width:35}, viewerTitle:{color:"#fff",fontSize:15,fontWeight:"900"}, viewerSub:{color:"#98A2B3",fontSize:11,marginTop:2}, viewerIcon:{color:"#fff",fontSize:22,paddingHorizontal:7}, pdfStage:{flex:1,backgroundColor:"#303743",alignItems:"center",justifyContent:"center"}, pdf:{flex:1,width:"100%",backgroundColor:"#303743"}, muted:{color:"#98A2B3"}, viewerControls:{height:52,backgroundColor:C.dark,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:28}, ctrl:{color:"#fff",fontSize:30}, pageJump:{paddingHorizontal:16,paddingVertical:7,borderRadius:10,backgroundColor:"#202938"}, pageJumpText:{color:"#fff",fontWeight:"800",fontSize:12}, viewerTools:{height:62,backgroundColor:C.dark,borderTopWidth:1,borderTopColor:"#283241",flexDirection:"row",justifyContent:"space-around",alignItems:"center"}, viewerTool:{color:"#fff",fontSize:18,fontWeight:"900"}, viewerToolLabel:{fontSize:11,fontWeight:"700",color:"#D0D5DD"}, modalBackdrop:{flex:1,backgroundColor:"rgba(0,0,0,.45)",justifyContent:"flex-end"}, editor:{backgroundColor:C.card,borderTopLeftRadius:25,borderTopRightRadius:25,padding:20,paddingBottom:30}, editorTitle:{fontSize:20,fontWeight:"900",color:C.ink}, editorHint:{fontSize:12,color:C.muted,lineHeight:18,marginTop:6,marginBottom:15}, editorInput:{height:50,borderWidth:1,borderColor:C.line,borderRadius:14,paddingHorizontal:14,marginBottom:10,color:C.ink}, editorRow:{flexDirection:"row",gap:10,marginTop:4}, infoCard:{backgroundColor:C.card,margin:25,borderRadius:22,padding:22}, infoLine:{fontSize:14,color:C.ink,marginTop:12}, busyBackdrop:{flex:1,backgroundColor:"rgba(16,24,40,.55)",alignItems:"center",justifyContent:"center"}, busyBox:{backgroundColor:C.card,borderRadius:18,paddingVertical:26,paddingHorizontal:32,alignItems:"center",gap:12}, busyText:{color:C.ink,fontWeight:"800",fontSize:13,marginTop:4}
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG },
+  screen: { flex: 1, backgroundColor: BG },
+  darkScreen: { backgroundColor: '#0C1320' },
+  homeContent: { paddingHorizontal: 20, paddingBottom: 36 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoMark: { width: 64, height: 64, borderRadius: 18, backgroundColor: '#1264D9', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', elevation: 3, shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  logoMarkSmall: { width: 46, height: 46, borderRadius: 14 },
+  logoPaper: { width: 42, height: 48, backgroundColor: '#fff', borderRadius: 5, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 7, transform: [{ rotate: '-5deg' }] },
+  logoPdf: { color: '#D42C2C', fontSize: 8, fontWeight: '900' },
+  logoBlueStrip: { position: 'absolute', left: 7, right: 7, bottom: 10, height: 7, borderRadius: 4, backgroundColor: '#0D3A86' },
+  logoWord: { position: 'absolute', bottom: 3, color: '#fff', fontWeight: '900', fontSize: 9 },
+  kuntal: { color: NAVY, fontWeight: '900', fontSize: 14, letterSpacing: 4 },
+  documents: { color: NAVY, fontWeight: '900', fontSize: 33, letterSpacing: -1.2, lineHeight: 35 },
+  tagline: { color: '#6E7788', fontSize: 17, marginTop: 8, marginBottom: 20 },
+  settingsButton: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E3E6EC', alignItems: 'center', justifyContent: 'center' },
+  settingsGlyph: { fontSize: 28, color: '#192236' },
+  searchBox: { height: 58, borderRadius: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E0E4EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 22 },
+  searchGlyph: { fontSize: 30, color: '#8D96A7', marginRight: 7, marginTop: -4 },
+  searchInput: { flex: 1, fontSize: 17, color: NAVY },
+  clear: { fontSize: 25, color: '#7D8797' },
+  smartBanner: { height: 142, backgroundColor: NAVY, borderRadius: 30, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', marginBottom: 28 },
+  smartGlow: { position: 'absolute', width: 230, height: 230, right: -40, top: -70, borderRadius: 120, backgroundColor: '#243D73', opacity: 0.75 },
+  scanLine: { position: 'absolute', width: 4, height: 110, right: 74, backgroundColor: '#8FB2FF', borderRadius: 3 },
+  smartIconBox: { width: 72, height: 72, borderRadius: 26, backgroundColor: '#223A6D', alignItems: 'center', justifyContent: 'center', marginRight: 18 },
+  smartIcon: { color: '#fff', fontSize: 33 },
+  smartTitle: { color: '#fff', fontWeight: '900', fontSize: 29, letterSpacing: -0.7 },
+  smartSubtitle: { color: '#CBD4E7', fontSize: 16, lineHeight: 21, marginTop: 3, maxWidth: 245 },
+  chevron: { color: '#fff', fontSize: 42, fontWeight: '300', marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 },
+  sectionTitle: { fontSize: 28, fontWeight: '900', color: NAVY, letterSpacing: -0.7 },
+  sectionCount: { color: '#6E7788', fontSize: 16 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  toolCard: { width: (SCREEN_WIDTH - 52) / 2, minHeight: 188, backgroundColor: CARD, borderRadius: 25, borderWidth: 1, borderColor: '#E4E8EF', padding: 18, marginBottom: 12, justifyContent: 'flex-start', shadowColor: '#0D1A33', shadowOpacity: 0.035, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+  darkCard: { backgroundColor: '#121C2C', borderColor: '#1D2A3F' },
+  pressed: { opacity: 0.88, transform: [{ scale: 0.985 }] },
+  toolIcon: { width: 54, height: 54, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
+  toolIconText: { color: '#2F6BFF', fontSize: 24, fontWeight: '900' },
+  toolTitle: { color: NAVY, fontWeight: '900', fontSize: 20, letterSpacing: -0.4 },
+  toolSubtitle: { color: '#747E90', fontSize: 14.5, lineHeight: 19, marginTop: 7 },
+  darkText: { color: '#F4F7FF' },
+  darkMuted: { color: '#8995AA' },
+  sectionHeaderRecent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 12 },
+  sectionTitleSmall: { fontSize: 21, fontWeight: '900', color: NAVY },
+  emptyCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E8EF', borderRadius: 22, padding: 22, alignItems: 'center' },
+  emptyIcon: { fontSize: 28, color: ACCENT, marginBottom: 8 },
+  emptyTitle: { color: NAVY, fontWeight: '800', fontSize: 17 },
+  emptyText: { color: MUTED, fontSize: 14, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  recentRow: { minHeight: 68, borderRadius: 18, borderWidth: 1, borderColor: '#E4E8EF', backgroundColor: '#fff', padding: 11, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 9 },
+  recentBadge: { width: 45, height: 45, borderRadius: 13, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
+  recentBadgeText: { color: ACCENT, fontSize: 11, fontWeight: '900' },
+  recentName: { color: NAVY, fontSize: 15, fontWeight: '800' },
+  recentDate: { color: '#8791A1', marginTop: 4, fontSize: 12 },
+  recentArrow: { color: '#99A3B3', fontSize: 28 },
+  loadingScreen: { flex: 1, backgroundColor: BG, alignItems: 'center', justifyContent: 'center' },
+  blackScreen: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  cameraScreen: { flex: 1, backgroundColor: '#000' },
+  cameraShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' },
+  cameraOverlay: { flex: 1, justifyContent: 'space-between' },
+  cameraTopRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 8 },
+  cameraCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(0,0,0,0.42)', alignItems: 'center', justifyContent: 'center' },
+  cameraCircleText: { color: '#fff', fontSize: 25 },
+  cameraTitleWrap: { flex: 1, alignItems: 'center' },
+  cameraTitle: { color: '#fff', fontSize: 19, fontWeight: '900' },
+  cameraHint: { color: '#D9DFE9', fontSize: 12, marginTop: 3 },
+  frameArea: { width: SCREEN_WIDTH - 58, height: SCREEN_WIDTH * 1.18, maxHeight: 540, alignSelf: 'center', borderRadius: 18, position: 'relative', justifyContent: 'center', alignItems: 'center' },
+  cornerTL: { position: 'absolute', left: 0, top: 0, width: 34, height: 34, borderLeftWidth: 4, borderTopWidth: 4, borderColor: '#fff', borderTopLeftRadius: 12 },
+  cornerTR: { position: 'absolute', right: 0, top: 0, width: 34, height: 34, borderRightWidth: 4, borderTopWidth: 4, borderColor: '#fff', borderTopRightRadius: 12 },
+  cornerBL: { position: 'absolute', left: 0, bottom: 0, width: 34, height: 34, borderLeftWidth: 4, borderBottomWidth: 4, borderColor: '#fff', borderBottomLeftRadius: 12 },
+  cornerBR: { position: 'absolute', right: 0, bottom: 0, width: 34, height: 34, borderRightWidth: 4, borderBottomWidth: 4, borderColor: '#fff', borderBottomRightRadius: 12 },
+  scanBeam: { width: '86%', height: 2, backgroundColor: '#70A2FF', opacity: 0.8 },
+  frameHint: { position: 'absolute', bottom: 18, color: '#fff', backgroundColor: 'rgba(0,0,0,0.38)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, fontSize: 12 },
+  cameraBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 34, paddingBottom: 18 },
+  thumbnailBox: { width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  thumbnail: { width: '100%', height: '100%' },
+  thumbnailEmpty: { color: '#fff', fontWeight: '900' },
+  shutterOuter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
+  shutterInner: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  shutterDot: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#EAF1FF', borderWidth: 2, borderColor: ACCENT },
+  modeButton: { width: 70, height: 52, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.42)', alignItems: 'center', justifyContent: 'center' },
+  modeButtonText: { color: '#fff', fontWeight: '900', fontSize: 11 },
+  finishBar: { position: 'absolute', left: 18, right: 18, bottom: 18, backgroundColor: 'rgba(12,18,30,0.94)', borderRadius: 18, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  finishSecondary: { color: '#fff', padding: 12, fontWeight: '800' },
+  finishButton: { backgroundColor: ACCENT, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 12 },
+  finishButtonText: { color: '#fff', fontWeight: '900' },
+  permissionScreen: { flex: 1, backgroundColor: BG, alignItems: 'center', justifyContent: 'center', padding: 30 },
+  permissionIcon: { fontSize: 48, color: ACCENT },
+  permissionTitle: { fontSize: 25, fontWeight: '900', color: NAVY, marginTop: 16 },
+  permissionText: { color: MUTED, textAlign: 'center', lineHeight: 22, marginTop: 8, marginBottom: 24 },
+  primaryButton: { backgroundColor: ACCENT, borderRadius: 16, paddingHorizontal: 25, paddingVertical: 14, minWidth: 180, alignItems: 'center' },
+  primaryButtonText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  secondaryButton: { padding: 14, marginTop: 8 },
+  secondaryButtonText: { color: MUTED, fontWeight: '800' },
+  viewerScreen: { flex: 1, backgroundColor: '#EEF1F6' },
+  viewerHeader: { height: Platform.OS === 'android' ? 76 : 96, backgroundColor: '#101827', paddingHorizontal: 12, paddingTop: Platform.OS === 'android' ? 18 : 42, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  viewerBack: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2639' },
+  viewerBackText: { color: '#fff', fontSize: 34, marginTop: -4 },
+  viewerTitle: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  viewerMeta: { color: '#8D99AE', fontSize: 11, marginTop: 3 },
+  viewerAction: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#1A2639', alignItems: 'center', justifyContent: 'center' },
+  viewerActionText: { color: '#fff', fontSize: 25 },
+  pdfStage: { flex: 1, backgroundColor: '#EEF1F6', paddingHorizontal: 4, paddingVertical: 4 },
+  pdf: { flex: 1, backgroundColor: '#EEF1F6' },
+  pdfLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF1F6' },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.42)' },
+  settingsSheet: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 28 },
+  sheetHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#D7DCE5', alignSelf: 'center', marginBottom: 16 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  sheetTitle: { color: NAVY, fontSize: 24, fontWeight: '900' },
+  sheetClose: { color: NAVY, fontSize: 28 },
+  settingRow: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#E8EBF0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingTitle: { color: NAVY, fontSize: 16, fontWeight: '800' },
+  settingSub: { color: MUTED, fontSize: 12, marginTop: 4 },
+  danger: { color: '#D74C4C', fontWeight: '900' },
+  aboutBox: { marginTop: 18, padding: 16, borderRadius: 18, backgroundColor: '#F4F6FA' },
+  aboutTitle: { color: NAVY, fontWeight: '900', fontSize: 15 },
+  aboutText: { color: MUTED, fontSize: 12, marginTop: 5 },
 });
