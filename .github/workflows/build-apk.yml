@@ -1,6 +1,7 @@
 name: Build Kuntal Documents APK
 
 
+
 on:
   workflow_dispatch:
   push:
@@ -20,7 +21,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
-          cache: npm
 
       - name: 📦 Install dependencies
         run: npm install --legacy-peer-deps
@@ -34,4 +34,5 @@ jobs:
         run: npx eas-cli build --platform android --profile preview --non-interactive --no-wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
 
