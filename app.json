@@ -5,10 +5,10 @@
     "owner": "yashjat",
     "version": "3.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#090d16"
     },
@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./adaptive-icon.png",
         "backgroundColor": "#090d16"
       },
       "package": "com.kuntal.pdfreader",
