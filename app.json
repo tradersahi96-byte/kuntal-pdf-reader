@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "Kuntal Documents",
-    "slug": "kuntal-pdf-reader",
+    "slug": "kuntal-documents",
+    "owner": "yashjat",
     "version": "3.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -46,7 +47,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "INSERT_YOUR_EXPO_EAS_PROJECT_ID_HERE"
+        "projectId": "dbb3dd38-f261-4180-8635-aeb33ba3a093"
       }
     }
   }
