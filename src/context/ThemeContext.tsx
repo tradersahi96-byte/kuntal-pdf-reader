@@ -2,10 +2,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const THEME_STORAGE_KEY = '@kuntal_theme_preference';
+const THEME_KEY = '@kuntal_theme_v3';
 
-export interface ColorScheme {
-  background: string;
+export interface ThemeColors {
+  bg: string;
   card: string;
   cardBorder: string;
   textPrimary: string;
@@ -19,8 +19,8 @@ export interface ColorScheme {
   statusBar: 'light-content' | 'dark-content';
 }
 
-const darkColors: ColorScheme = {
-  background: '#090d16',
+const darkColors: ThemeColors = {
+  bg: '#090d16',
   card: '#131b2e',
   cardBorder: '#1e293b',
   textPrimary: '#f8fafc',
@@ -34,8 +34,8 @@ const darkColors: ColorScheme = {
   statusBar: 'light-content',
 };
 
-const lightColors: ColorScheme = {
-  background: '#f8fafc',
+const lightColors: ThemeColors = {
+  bg: '#f8fafc',
   card: '#ffffff',
   cardBorder: '#e2e8f0',
   textPrimary: '#0f172a',
@@ -51,7 +51,7 @@ const lightColors: ColorScheme = {
 
 interface ThemeContextType {
   isDark: boolean;
-  colors: ColorScheme;
+  colors: ThemeColors;
   toggleTheme: () => void;
 }
 
@@ -68,7 +68,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     (async () => {
       try {
-        const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        const saved = await AsyncStorage.getItem(THEME_KEY);
         if (saved !== null) {
           setIsDark(saved === 'dark');
         } else {
@@ -81,13 +81,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [systemScheme]);
 
   const toggleTheme = async () => {
-    try {
-      const next = !isDark;
-      setIsDark(next);
-      await AsyncStorage.setItem(THEME_STORAGE_KEY, next ? 'dark' : 'light');
-    } catch (e) {
-      console.error('Failed to save theme state', e);
-    }
+    const next = !isDark;
+    setIsDark(next);
+    await AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
   };
 
   return (
@@ -98,4 +94,3 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 };
 
 export const useAppTheme = () => useContext(ThemeContext);
-
