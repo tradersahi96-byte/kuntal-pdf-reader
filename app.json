@@ -8,7 +8,7 @@
     "icon": "./icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./splash.png",
+      "image": "./icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#090d16"
     "splash": {
