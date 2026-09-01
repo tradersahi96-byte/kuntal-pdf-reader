@@ -1,47 +1,53 @@
 {
   "expo": {
     "name": "Kuntal Documents",
-    "slug": "kuntal-documents",
+    "slug": "kuntal-pdf-reader",
     "version": "3.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-    "android": {
-      "package": "com.kuntal.documents",
-      "versionCode": 30,
-      "permissions": [
-        "CAMERA"
-      ],
-      "adaptiveIcon": {
-        "foregroundImage": "./adaptive-icon.png",
-        "backgroundColor": "#1264D9"
-      }
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#090d16"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#090d16"
+      },
+      "package": "com.kuntal.pdfreader",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Kuntal Documents to use the camera to scan documents.",
-          "microphonePermission": "Allow Kuntal Documents to use the microphone.",
-          "recordAudioAndroid": false
+          "cameraPermission": "Allow Kuntal Documents to use your camera to scan physical pages."
         }
       ],
-      "@config-plugins/react-native-blob-util",
-      "@config-plugins/react-native-pdf",
-      "expo-document-picker"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Kuntal Documents to access your gallery to convert images into PDF."
+        }
+      ]
     ],
     "extra": {
       "eas": {
-        "projectId": "dbb3dd38-f261-4180-8635-aeb33ba3a093"
+        "projectId": "preserve-your-existing-eas-project-id"
       }
-    },
-    "owner": "yashjat",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "icon": "./icon.png"
+    }
   }
 }
