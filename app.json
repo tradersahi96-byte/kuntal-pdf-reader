@@ -4,13 +4,15 @@
     "slug": "kuntal-documents",
     "version": "3.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "android": {
       "package": "com.kuntal.documents",
-      "versionCode": 30,
+      "versionCode": 31,
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./adaptive-icon.png",
@@ -29,9 +31,17 @@
           "recordAudioAndroid": false
         }
       ],
+      [
+        "expo-image-manipulator",
+        {
+          "image": true
+        }
+      ],
       "@config-plugins/react-native-blob-util",
       "@config-plugins/react-native-pdf",
-      "expo-document-picker"
+      "expo-document-picker",
+      "react-native-gesture-handler",
+      "react-native-reanimated"
     ],
     "extra": {
       "eas": {
