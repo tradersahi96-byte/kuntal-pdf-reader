@@ -1,623 +1,705 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  BackHandler,
-  Dimensions,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
   FlatList,
   Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
+  Alert,
+  ActivityIndicator,
   SafeAreaView,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Switch,
-  Text,
+  StatusBar,
   TextInput,
-  View,
+  BackHandler,
+  ScrollView,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Pdf from 'react-native-pdf';
+import { WebView } from 'react-native-webview';
+import { PDFDocument, degrees } from 'pdf-lib';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ACCENT = '#2F6BFF';
-const NAVY = '#101827';
-const BG = '#F5F7FB';
-const CARD = '#FFFFFF';
-const MUTED = '#70798B';
-const RECENT_KEY = '@kuntal_documents_recent_v3';
-const THEME_KEY = '@kuntal_documents_theme_v3';
-const DOC_DIR = `${FileSystem.documentDirectory || FileSystem.cacheDirectory}kuntal-documents/`;
-
-const tools = [
-  { id: 'auto', title: 'Auto Scan', subtitle: 'Guided document scan', icon: '▣', tone: '#EAF1FF' },
-  { id: 'manual', title: 'Manual Scan', subtitle: 'Capture a page manually', icon: '+', tone: '#EEF8F3' },
-  { id: 'gallery', title: 'Gallery → PDF', subtitle: 'Turn images into a PDF', icon: '▧', tone: '#FFF4E8' },
-  { id: 'open', title: 'Open PDF', subtitle: 'Read any PDF file', icon: 'PDF', tone: '#F0ECFF' },
-  { id: 'merge', title: 'Merge PDF', subtitle: 'Combine PDF files', icon: '↔', tone: '#EAF7FF' },
-  { id: 'split', title: 'Split PDF', subtitle: 'Extract selected pages', icon: '✂', tone: '#FFF0F2' },
-  { id: 'rotate', title: 'Rotate Pages', subtitle: 'Rotate selected pages', icon: '↻', tone: '#EEF2FF' },
-  { id: 'compress', title: 'Compress PDF', subtitle: 'Reduce file size', icon: '↓', tone: '#F2F8EC' },
-  { id: 'sign', title: 'Signature', subtitle: 'Add a digital signature', icon: '✎', tone: '#FFF2E9' },
-  { id: 'watermark', title: 'Watermark', subtitle: 'Stamp your documents', icon: '◇', tone: '#EAF6F8' },
-  { id: 'share', title: 'Share PDF', subtitle: 'Send a document', icon: '↑', tone: '#F2EEFF' },
-  { id: 'bookmarks', title: 'Bookmarks', subtitle: 'Keep important files close', icon: '☆', tone: '#FFF8E7' },
-];
-
-function LogoMark({ small = false }) {
-  return (
-    <View style={[styles.logoMark, small && styles.logoMarkSmall]}>
-      <View style={styles.logoPaper}>
-        <Text style={styles.logoPdf}>PDF</Text>
-      </View>
-      <View style={styles.logoBlueStrip} />
-      <Text style={styles.logoWord}>K</Text>
-    </View>
-  );
-}
-
-function ToolCard({ item, onPress, dark }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.toolCard,
-        dark && styles.darkCard,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.toolIcon, { backgroundColor: dark ? '#1C2A42' : item.tone }]}>
-        <Text style={[styles.toolIconText, dark && { color: '#CFE0FF' }]}>{item.icon}</Text>
-      </View>
-      <Text style={[styles.toolTitle, dark && styles.darkText]}>{item.title}</Text>
-      <Text style={[styles.toolSubtitle, dark && styles.darkMuted]}>{item.subtitle}</Text>
-    </Pressable>
-  );
-}
-
-function Home({ dark, recent, onTool, onSettings, onOpenRecent }) {
-  const [query, setQuery] = useState('');
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1300, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1300, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [pulse]);
-
-  const filteredTools = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return tools;
-    return tools.filter((x) => `${x.title} ${x.subtitle}`.toLowerCase().includes(q));
-  }, [query]);
-
-  const filteredRecent = recent.filter((x) => x.name.toLowerCase().includes(query.trim().toLowerCase()));
-
-  return (
-    <ScrollView
-      style={[styles.screen, dark && styles.darkScreen]}
-      contentContainerStyle={styles.homeContent}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.headerRow}>
-        <View style={styles.brandRow}>
-          <LogoMark />
-          <View>
-            <Text style={[styles.kuntal, dark && styles.darkText]}>KUNTAL</Text>
-            <Text style={[styles.documents, dark && styles.darkText]}>Documents</Text>
-          </View>
-        </View>
-        <Pressable onPress={onSettings} style={[styles.settingsButton, dark && styles.darkCard]}>
-          <Text style={[styles.settingsGlyph, dark && styles.darkText]}>⚙</Text>
-        </Pressable>
-      </View>
-
-      <Text style={[styles.tagline, dark && styles.darkMuted]}>Scan. Edit. Organize. Share.</Text>
-
-      <View style={[styles.searchBox, dark && { backgroundColor: '#172033', borderColor: '#26334B' }]}>
-        <Text style={styles.searchGlyph}>⌕</Text>
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search tools & documents"
-          placeholderTextColor={dark ? '#77839A' : '#9AA2B1'}
-          style={[styles.searchInput, dark && styles.darkText]}
-        />
-        {query ? <Pressable onPress={() => setQuery('')}><Text style={styles.clear}>×</Text></Pressable> : null}
-      </View>
-
-      <Pressable onPress={() => onTool('auto')} style={({ pressed }) => [styles.smartBanner, pressed && styles.pressed]}>
-        <View style={styles.smartGlow} />
-        <Animated.View style={[styles.scanLine, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.9] }) }]} />
-        <View style={styles.smartIconBox}><Text style={styles.smartIcon}>▣</Text></View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.smartTitle}>Smart Scan</Text>
-          <Text style={styles.smartSubtitle}>Auto crop · enhance · multi-page · OCR</Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
-
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, dark && styles.darkText]}>Quick Tools</Text>
-        <Text style={[styles.sectionCount, dark && styles.darkMuted]}>{filteredTools.length} tools</Text>
-      </View>
-
-      <View style={styles.grid}>
-        {filteredTools.map((item) => (
-          <ToolCard key={item.id} item={item} dark={dark} onPress={() => onTool(item.id)} />
-        ))}
-      </View>
-
-      <View style={styles.sectionHeaderRecent}>
-        <Text style={[styles.sectionTitleSmall, dark && styles.darkText]}>Recent documents</Text>
-        <Text style={[styles.sectionCount, dark && styles.darkMuted]}>{filteredRecent.length}</Text>
-      </View>
-
-      {filteredRecent.length === 0 ? (
-        <View style={[styles.emptyCard, dark && styles.darkCard]}>
-          <Text style={styles.emptyIcon}>▤</Text>
-          <Text style={[styles.emptyTitle, dark && styles.darkText]}>No recent documents</Text>
-          <Text style={[styles.emptyText, dark && styles.darkMuted]}>Scan a page or open a PDF and it will appear here.</Text>
-        </View>
-      ) : (
-        filteredRecent.slice(0, 8).map((item) => (
-          <Pressable key={item.id} onPress={() => onOpenRecent(item)} style={[styles.recentRow, dark && styles.darkCard]}>
-            <View style={styles.recentBadge}><Text style={styles.recentBadgeText}>PDF</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={[styles.recentName, dark && styles.darkText]}>{item.name}</Text>
-              <Text style={[styles.recentDate, dark && styles.darkMuted]}>{new Date(item.addedAt).toLocaleDateString()}</Text>
-            </View>
-            <Text style={styles.recentArrow}>›</Text>
-          </Pressable>
-        ))
-      )}
-    </ScrollView>
-  );
-}
-
-function Scanner({ mode, onClose, onFinish }) {
-  const cameraRef = useRef(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [flash, setFlash] = useState('off');
-  const [pages, setPages] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(mode === 'auto');
-  const [cameraReady, setCameraReady] = useState(false);
-  const scanAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        Animated.timing(scanAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [scanAnim]);
-
-  useEffect(() => {
-    if (mode === 'auto' && cameraReady && pages.length === 0) {
-      const t = setTimeout(() => capture(), 1800);
-      return () => clearTimeout(t);
-    }
-  }, [cameraReady, mode, pages.length]);
-
-  async function capture() {
-    if (!cameraRef.current || !cameraReady || busy) return;
-    setBusy(true);
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.78, skipProcessing: false });
-      if (photo?.uri) {
-        setPages((prev) => [...prev, { uri: photo.uri, width: photo.width, height: photo.height }]);
-        setAutoRunning(false);
-      }
-    } catch (e) {
-      Alert.alert('Scan failed', 'The camera could not capture the page. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!permission) return <View style={styles.blackScreen}><ActivityIndicator color="#fff" /></View>;
-  if (!permission.granted) {
-    return (
-      <View style={styles.permissionScreen}>
-        <Text style={styles.permissionIcon}>▣</Text>
-        <Text style={styles.permissionTitle}>Camera access needed</Text>
-        <Text style={styles.permissionText}>Kuntal Documents uses the camera to scan paper documents.</Text>
-        <Pressable style={styles.primaryButton} onPress={requestPermission}><Text style={styles.primaryButtonText}>Allow camera</Text></Pressable>
-        <Pressable style={styles.secondaryButton} onPress={onClose}><Text style={styles.secondaryButtonText}>Not now</Text></Pressable>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.cameraScreen}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        flash={flash}
-        enableTorch={false}
-        onCameraReady={() => setCameraReady(true)}
-      />
-      <View style={styles.cameraShade} />
-      <SafeAreaView style={styles.cameraOverlay}>
-        <View style={styles.cameraTopRow}>
-          <Pressable onPress={onClose} style={styles.cameraCircle}><Text style={styles.cameraCircleText}>×</Text></Pressable>
-          <View style={styles.cameraTitleWrap}>
-            <Text style={styles.cameraTitle}>{mode === 'auto' ? 'Auto Scan' : 'Manual Scan'}</Text>
-            <Text style={styles.cameraHint}>{pages.length ? `${pages.length} page${pages.length > 1 ? 's' : ''}` : 'Place the document inside the frame'}</Text>
-          </View>
-          <Pressable onPress={() => setFlash((v) => v === 'off' ? 'on' : 'off')} style={styles.cameraCircle}>
-            <Text style={styles.cameraCircleText}>{flash === 'on' ? '⚡' : '◌'}</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.frameArea}>
-          <View style={styles.cornerTL} /><View style={styles.cornerTR} /><View style={styles.cornerBL} /><View style={styles.cornerBR} />
-          <Animated.View style={[styles.scanBeam, { transform: [{ translateY: scanAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 120] }) }] }]} />
-          <Text style={styles.frameHint}>{autoRunning ? 'Scanning…' : 'Align document edges'}</Text>
-        </View>
-
-        <View style={styles.cameraBottom}>
-          <View style={styles.thumbnailBox}>
-            {pages[pages.length - 1]?.uri ? <Image source={{ uri: pages[pages.length - 1].uri }} style={styles.thumbnail} /> : <Text style={styles.thumbnailEmpty}>0</Text>}
-          </View>
-          <Pressable onPress={capture} disabled={busy} style={styles.shutterOuter}>
-            <View style={styles.shutterInner}>{busy ? <ActivityIndicator color={ACCENT} /> : <View style={styles.shutterDot} />}</View>
-          </Pressable>
-          <Pressable onPress={() => setAutoRunning((v) => !v)} style={styles.modeButton}>
-            <Text style={styles.modeButtonText}>{autoRunning ? 'AUTO' : 'MANUAL'}</Text>
-          </Pressable>
-        </View>
-
-        {pages.length > 0 && (
-          <View style={styles.finishBar}>
-            <Pressable onPress={() => setPages((p) => p.slice(0, -1))}><Text style={styles.finishSecondary}>Undo</Text></Pressable>
-            <Pressable onPress={() => onFinish(pages)} style={styles.finishButton}><Text style={styles.finishButtonText}>Create PDF</Text></Pressable>
-          </View>
-        )}
-      </SafeAreaView>
-    </View>
-  );
-}
-
-function PdfViewer({ item, onClose, onShare }) {
-  const [pages, setPages] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-
-  return (
-    <View style={styles.viewerScreen}>
-      <StatusBar style="light" />
-      <View style={styles.viewerHeader}>
-        <Pressable onPress={onClose} style={styles.viewerBack}><Text style={styles.viewerBackText}>‹</Text></Pressable>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={styles.viewerTitle}>{item.name}</Text>
-          <Text style={styles.viewerMeta}>{pages ? `Page ${page} of ${pages}` : 'PDF document'}</Text>
-        </View>
-        <Pressable onPress={() => onShare(item)} style={styles.viewerAction}><Text style={styles.viewerActionText}>↑</Text></Pressable>
-      </View>
-      <View style={styles.pdfStage}>
-        <Pdf
-          source={{ uri: item.uri, cache: true }}
-          style={styles.pdf}
-          horizontal={false}
-          enableAntialiasing={true}
-          fitPolicy={2}
-          spacing={8}
-          onLoadComplete={(numberOfPages) => { setPages(numberOfPages); setLoading(false); }}
-          onPageChanged={(p) => setPage(p)}
-          onError={() => setLoading(false)}
-        />
-        {loading && <View style={styles.pdfLoading}><ActivityIndicator color={ACCENT} size="large" /></View>}
-      </View>
-    </View>
-  );
-}
-
-function Settings({ dark, setDark, onClose, onClear }) {
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={[styles.settingsSheet, dark && { backgroundColor: '#111A2A' }]}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeader}><Text style={[styles.sheetTitle, dark && styles.darkText]}>Settings</Text><Pressable onPress={onClose}><Text style={[styles.sheetClose, dark && styles.darkText]}>×</Text></Pressable></View>
-          <View style={styles.settingRow}>
-            <View><Text style={[styles.settingTitle, dark && styles.darkText]}>Dark appearance</Text><Text style={[styles.settingSub, dark && styles.darkMuted]}>Use a darker scanner workspace</Text></View>
-            <Switch value={dark} onValueChange={setDark} trackColor={{ false: '#D7DCE5', true: '#7EA0FF' }} thumbColor={dark ? ACCENT : '#fff'} />
-          </View>
-          <Pressable onPress={onClear} style={styles.settingRow}><View><Text style={[styles.settingTitle, dark && styles.darkText]}>Clear recent documents</Text><Text style={[styles.settingSub, dark && styles.darkMuted]}>Remove the local recent list</Text></View><Text style={styles.danger}>Clear</Text></Pressable>
-          <View style={styles.aboutBox}><Text style={[styles.aboutTitle, dark && styles.darkText]}>Kuntal Documents</Text><Text style={[styles.aboutText, dark && styles.darkMuted]}>Scanner-style document workspace · version 3.0.0</Text></View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
+const RECENTS_KEY = '@kuntal_recent_docs_v3';
+const THEME_KEY = '@kuntal_theme_v3';
+const DOCUMENTS_DIR = `${FileSystem.documentDirectory}KuntalDocuments/`;
 
 export default function App() {
-  const [dark, setDark] = useState(false);
-  const [recent, setRecent] = useState([]);
-  const [screen, setScreen] = useState('home');
-  const [scannerMode, setScannerMode] = useState('manual');
-  const [viewer, setViewer] = useState(null);
-  const [settings, setSettings] = useState(false);
-  const [initializing, setInitializing] = useState(true);
+  const [currentScreen, setCurrentScreen] = useState('home'); // 'home' | 'scan' | 'viewer' | 'tools'
+  const [isDark, setIsDark] = useState(true);
+  const [recents, setRecents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+
+  // Viewer State
+  const [viewerFile, setViewerFile] = useState(null); // { uri, title, base64 }
+  const [viewerError, setViewerError] = useState(null);
+
+  // Scanner & Conversion State
+  const [scannedPages, setScannedPages] = useState([]);
+  const [scanDocName, setScanDocName] = useState('');
+
+  // Active Tool Mode
+  const [activeTool, setActiveTool] = useState(null); // 'merge' | 'split' | 'rotate'
 
   useEffect(() => {
-    (async () => {
-      try {
-        await FileSystem.makeDirectoryAsync(DOC_DIR, { intermediates: true });
-      } catch {}
-      try {
-        const r = await AsyncStorage.getItem(RECENT_KEY);
-        const t = await AsyncStorage.getItem(THEME_KEY);
-        if (r) setRecent(JSON.parse(r));
-        if (t) setDark(t === 'dark');
-      } catch {}
-      setInitializing(false);
-    })();
-  }, []);
-
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (viewer) { setViewer(null); return true; }
-      if (screen === 'scanner') { setScreen('home'); return true; }
-      if (settings) { setSettings(false); return true; }
+    initApp();
+    const backAction = () => {
+      if (currentScreen !== 'home') {
+        setCurrentScreen('home');
+        return true;
+      }
       return false;
-    });
-    return () => sub.remove();
-  }, [screen, viewer, settings]);
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [currentScreen]);
 
-  async function saveRecent(list) {
-    setRecent(list);
-    await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(list));
-  }
-
-  async function addRecent(item) {
-    const next = [item, ...recent.filter((x) => x.uri !== item.uri)].slice(0, 40);
-    await saveRecent(next);
-  }
-
-  async function sharePdf(item) {
+  const initApp = async () => {
     try {
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(item.uri, { mimeType: 'application/pdf', dialogTitle: 'Share PDF' });
-      } else {
-        await Share.share({ message: item.uri });
+      const dirInfo = await FileSystem.getInfoAsync(DOCUMENTS_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(DOCUMENTS_DIR, { intermediates: true });
       }
-    } catch {}
-  }
-
-  async function createPdfFromImages(images, namePrefix = 'Scan') {
-    if (!images?.length) return;
-    try {
-      setScreen('home');
-      const encoded = [];
-      for (const image of images.slice(0, 12)) {
-        const base64 = await FileSystem.readAsStringAsync(image.uri, { encoding: FileSystem.EncodingType.Base64 });
-        const mime = image.mimeType || (image.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
-        encoded.push(`data:${mime};base64,${base64}`);
+      const savedTheme = await AsyncStorage.getItem(THEME_KEY);
+      if (savedTheme !== null) {
+        setIsDark(savedTheme === 'dark');
       }
-      const body = encoded.map((src) => `<section><img src="${src}" /></section>`).join('');
-      const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><style>@page{margin:0}html,body{margin:0;padding:0;background:#fff}section{width:100%;height:100vh;display:flex;align-items:center;justify-content:center;page-break-after:always;overflow:hidden}section:last-child{page-break-after:auto}img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>${body}</body></html>`;
-      const result = await Print.printToFileAsync({ html });
-      const fileName = `${namePrefix.replace(/[^a-z0-9-_]/gi, '_')}_${Date.now()}.pdf`;
-      const destination = `${DOC_DIR}${fileName}`;
-      await FileSystem.copyAsync({ from: result.uri, to: destination });
-      const item = { id: `${Date.now()}`, name: fileName, uri: destination, addedAt: new Date().toISOString() };
-      await addRecent(item);
-      setViewer(item);
+      await loadRecents();
     } catch (e) {
-      Alert.alert('PDF creation failed', 'The pages could not be converted to a PDF. Try fewer or smaller images.');
+      console.error('Init failure:', e);
     }
-  }
+  };
 
-  async function openPdfPicker() {
+  const toggleTheme = async () => {
+    const nextTheme = !isDark;
+    setIsDark(nextTheme);
+    await AsyncStorage.setItem(THEME_KEY, nextTheme ? 'dark' : 'light');
+  };
+
+  const loadRecents = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
-      if (result.canceled) return;
-      const asset = result.assets?.[0];
-      if (!asset?.uri) return;
-      const item = { id: `${Date.now()}`, name: asset.name || 'Document.pdf', uri: asset.uri, addedAt: new Date().toISOString() };
-      await addRecent(item);
-      setViewer(item);
-    } catch {
-      Alert.alert('Unable to open PDF', 'The selected PDF could not be opened.');
+      const data = await AsyncStorage.getItem(RECENTS_KEY);
+      if (!data) {
+        setRecents([]);
+        return;
+      }
+      const list = JSON.parse(data);
+      const verified = [];
+      for (const item of list) {
+        const info = await FileSystem.getInfoAsync(item.uri);
+        if (info.exists) {
+          verified.push(item);
+        }
+      }
+      setRecents(verified);
+    } catch (e) {
+      setRecents([]);
     }
-  }
+  };
 
-  async function pickImagesForPdf() {
+  const saveToRecents = async (doc) => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'image/*', copyToCacheDirectory: true, multiple: true });
-      if (result.canceled) return;
-      await createPdfFromImages(result.assets || [], 'Gallery_Scan');
-    } catch {
-      Alert.alert('Unable to select images', 'Please choose JPG or PNG images.');
+      const existing = await AsyncStorage.getItem(RECENTS_KEY);
+      let list = existing ? JSON.parse(existing) : [];
+      list = [{ ...doc, timestamp: Date.now() }, ...list.filter((x) => x.uri !== doc.uri)].slice(0, 30);
+      await AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(list));
+      await loadRecents();
+    } catch (e) {
+      console.error('Save recents failure:', e);
     }
-  }
+  };
 
-  async function handleTool(id) {
-    if (id === 'auto' || id === 'manual') {
-      setScannerMode(id);
-      setScreen('scanner');
+  const deleteRecentItem = async (uri) => {
+    Alert.alert('Delete Document', 'Are you sure you want to delete this document from local storage?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (info.exists) {
+              await FileSystem.deleteAsync(uri, { idempotent: true });
+            }
+            const updated = recents.filter((item) => item.uri !== uri);
+            await AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(updated));
+            setRecents(updated);
+          } catch (e) {
+            Alert.alert('Error', 'Failed to delete file.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openPdfViewer = async (uri, title) => {
+    setLoading(true);
+    setLoadingMessage('Loading PDF Document...');
+    setViewerError(null);
+    try {
+      const info = await FileSystem.getInfoAsync(uri);
+      if (!info.exists) {
+        throw new Error('Document does not exist.');
+      }
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setViewerFile({ uri, title: title || 'Document', base64 });
+      setCurrentScreen('viewer');
+    } catch (e) {
+      Alert.alert('Open Error', e.message || 'Could not read PDF.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickDevicePdf = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const safeName = (asset.name || `Document_${Date.now()}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const destUri = `${DOCUMENTS_DIR}${Date.now()}_${safeName}`;
+        await FileSystem.copyAsync({ from: asset.uri, to: destUri });
+        const fileInfo = await FileSystem.getInfoAsync(destUri);
+
+        const newDoc = {
+          id: destUri,
+          name: asset.name || safeName,
+          uri: destUri,
+          size: fileInfo.size || asset.size || 0,
+        };
+        await saveToRecents(newDoc);
+        await openPdfViewer(destUri, newDoc.name);
+      }
+    } catch (e) {
+      Alert.alert('Import Failed', 'Failed to select PDF document.');
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera permission is required.');
       return;
     }
-    if (id === 'open') return openPdfPicker();
-    if (id === 'gallery') return pickImagesForPdf();
-    if (id === 'share') {
-      if (recent[0]) return sharePdf(recent[0]);
-      return Alert.alert('No PDF yet', 'Create or open a PDF first.');
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets && result.assets[0]?.uri) {
+      setScannedPages((prev) => [...prev, result.assets[0].uri]);
     }
-    Alert.alert(id === 'bookmarks' ? 'Bookmarks' : tools.find((x) => x.id === id)?.title || 'Tool', 'This tool is included in the scanner workspace and is ready for the next document-editing module.');
-  }
+  };
 
-  async function finishScan(pages) {
-    await createPdfFromImages(pages, 'Kuntal_Scan');
-  }
+  const handleGalleryPick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Gallery permission is required.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets) {
+      const uris = result.assets.map((a) => a.uri);
+      setScannedPages((prev) => [...prev, ...uris]);
+    }
+  };
 
-  if (initializing) {
-    return <View style={[styles.loadingScreen, dark && styles.darkScreen]}><LogoMark /><ActivityIndicator color={ACCENT} style={{ marginTop: 18 }} /></View>;
-  }
+  const compilePagesToPdf = async () => {
+    if (scannedPages.length === 0) {
+      Alert.alert('No Pages', 'Add at least one scanned page.');
+      return;
+    }
+    setLoading(true);
+    setLoadingMessage('Compiling PDF Document...');
+    try {
+      const imagesBase64 = await Promise.all(
+        scannedPages.map(async (uri) => {
+          const b64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          return `data:image/jpeg;base64,${b64}`;
+        })
+      );
 
-  if (screen === 'scanner') {
-    return <Scanner mode={scannerMode} onClose={() => setScreen('home')} onFinish={finishScan} />;
-  }
+      const htmlPages = imagesBase64
+        .map(
+          (b64) => `
+          <div style="page-break-after: always; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0;">
+            <img src="${b64}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
+          </div>`
+        )
+        .join('');
 
-  if (viewer) {
-    return <PdfViewer item={viewer} onClose={() => setViewer(null)} onShare={sharePdf} />;
-  }
+      const html = `<html><body style="margin:0;padding:0;background:#ffffff;">${htmlPages}</body></html>`;
+      const { uri: tempUri } = await Print.printToFileAsync({ html });
+
+      const safeName = (scanDocName.trim() || `Kuntal_Scan_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const finalFileName = `${safeName}.pdf`;
+      const destUri = `${DOCUMENTS_DIR}${finalFileName}`;
+
+      await FileSystem.copyAsync({ from: tempUri, to: destUri });
+      const info = await FileSystem.getInfoAsync(destUri);
+
+      const docItem = {
+        id: destUri,
+        name: finalFileName,
+        uri: destUri,
+        size: info.size || 0,
+        pageCount: scannedPages.length,
+      };
+
+      await saveToRecents(docItem);
+      setScannedPages([]);
+      setScanDocName('');
+      await openPdfViewer(destUri, finalFileName);
+    } catch (e) {
+      Alert.alert('Generation Error', e.message || 'Failed to generate PDF.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleShare = async (uri, title) => {
+    const isAvail = await Sharing.isAvailableAsync();
+    if (!isAvail) {
+      Alert.alert('Sharing Unavailable', 'Sharing is not supported on this device.');
+      return;
+    }
+    await Sharing.shareAsync(uri, {
+      mimeType: 'application/pdf',
+      dialogTitle: title || 'Share PDF Document',
+      UTI: 'com.adobe.pdf',
+    });
+  };
+
+  // Tools Implementation (Merge, Split, Rotate)
+  const handleMergePdfs = async () => {
+    try {
+      const res1 = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
+      if (res1.canceled || !res1.assets) return;
+      const res2 = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
+      if (res2.canceled || !res2.assets) return;
+
+      setLoading(true);
+      setLoadingMessage('Merging PDF Documents...');
+
+      const b64_1 = await FileSystem.readAsStringAsync(res1.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const b64_2 = await FileSystem.readAsStringAsync(res2.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+
+      const pdf1 = await PDFDocument.load(b64_1);
+      const pdf2 = await PDFDocument.load(b64_2);
+
+      const mergedPdf = await PDFDocument.create();
+      const pages1 = await mergedPdf.copyPages(pdf1, pdf1.getPageIndices());
+      pages1.forEach((p) => mergedPdf.addPage(p));
+
+      const pages2 = await mergedPdf.copyPages(pdf2, pdf2.getPageIndices());
+      pages2.forEach((p) => mergedPdf.addPage(p));
+
+      const mergedBase64 = await mergedPdf.saveAsBase64();
+      const outName = `Merged_${Date.now()}.pdf`;
+      const destUri = `${DOCUMENTS_DIR}${outName}`;
+
+      await FileSystem.writeAsStringAsync(destUri, mergedBase64, { encoding: FileSystem.EncodingType.Base64 });
+      const info = await FileSystem.getInfoAsync(destUri);
+
+      await saveToRecents({ id: destUri, name: outName, uri: destUri, size: info.size || 0 });
+      await openPdfViewer(destUri, outName);
+    } catch (e) {
+      Alert.alert('Merge Error', e.message || 'Could not merge selected documents.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRotatePdf = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
+      if (res.canceled || !res.assets) return;
+
+      setLoading(true);
+      setLoadingMessage('Rotating Document Pages (90°)...');
+
+      const b64 = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const pdfDoc = await PDFDocument.load(b64);
+      const pages = pdfDoc.getPages();
+      pages.forEach((page) => {
+        const currentRotation = page.getRotation().angle;
+        page.setRotation(degrees((currentRotation + 90) % 360));
+      });
+
+      const rotatedB64 = await pdfDoc.saveAsBase64();
+      const outName = `Rotated_${Date.now()}.pdf`;
+      const destUri = `${DOCUMENTS_DIR}${outName}`;
+
+      await FileSystem.writeAsStringAsync(destUri, rotatedB64, { encoding: FileSystem.EncodingType.Base64 });
+      const info = await FileSystem.getInfoAsync(destUri);
+
+      await saveToRecents({ id: destUri, name: outName, uri: destUri, size: info.size || 0 });
+      await openPdfViewer(destUri, outName);
+    } catch (e) {
+      Alert.alert('Rotate Error', e.message || 'Failed to rotate PDF.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const themeColors = isDark
+    ? {
+        bg: '#090d16',
+        card: '#131b2e',
+        cardBorder: '#1e293b',
+        textPrimary: '#f8fafc',
+        textSecondary: '#cbd5e1',
+        textMuted: '#64748b',
+        accent: '#0284c7',
+        accentSec: '#0f766e',
+        headerBg: '#0f172a',
+        statusBar: 'light-content',
+      }
+    : {
+        bg: '#f8fafc',
+        card: '#ffffff',
+        cardBorder: '#e2e8f0',
+        textPrimary: '#0f172a',
+        textSecondary: '#334155',
+        textMuted: '#94a3b8',
+        accent: '#0284c7',
+        accentSec: '#0d9488',
+        headerBg: '#ffffff',
+        statusBar: 'dark-content',
+      };
 
   return (
-    <SafeAreaView style={[styles.safe, dark && styles.darkScreen]}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
-      <Home
-        dark={dark}
-        recent={recent}
-        onTool={handleTool}
-        onSettings={() => setSettings(true)}
-        onOpenRecent={(item) => setViewer(item)}
-      />
-      <Settings
-        dark={dark}
-        setDark={async (v) => { setDark(v); await AsyncStorage.setItem(THEME_KEY, v ? 'dark' : 'light'); }}
-        onClose={() => setSettings(false)}
-        onClear={async () => { await saveRecent([]); setSettings(false); }}
-      />
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.bg }]}>
+      <StatusBar barStyle={themeColors.statusBar} backgroundColor={themeColors.headerBg} />
+
+      {/* Global Loading Overlay */}
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#38bdf8" />
+          <Text style={styles.loadingOverlayText}>{loadingMessage || 'Processing...'}</Text>
+        </View>
+      )}
+
+      {/* HOME SCREEN */}
+      {currentScreen === 'home' && (
+        <View style={{ flex: 1 }}>
+          <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.cardBorder }]}>
+            <View>
+              <Text style={[styles.brandSub, { color: themeColors.accent }]}>KUNTAL DOCUMENTS</Text>
+              <Text style={[styles.brandTitle, { color: themeColors.textPrimary }]}>PDF Suite</Text>
+            </View>
+            <TouchableOpacity
+              onPress={toggleTheme}
+              style={[styles.themeBtn, { backgroundColor: themeColors.card, borderColor: themeColors.cardBorder }]}
+            >
+              <Text style={{ fontSize: 16 }}>{isDark ? '☀️' : '🌙'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.toolsRow}>
+            <TouchableOpacity
+              style={[styles.toolCard, { backgroundColor: themeColors.accent }]}
+              onPress={() => {
+                setScannedPages([]);
+                setCurrentScreen('scan');
+              }}
+            >
+              <Text style={styles.toolIcon}>📸</Text>
+              <Text style={styles.toolTitle}>Scan Docs</Text>
+              <Text style={styles.toolSub}>Camera & Multi-Page</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.toolCard, { backgroundColor: themeColors.accentSec }]} onPress={pickDevicePdf}>
+              <Text style={styles.toolIcon}>📂</Text>
+              <Text style={styles.toolTitle}>Open PDF</Text>
+              <Text style={styles.toolSub}>Device File Picker</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick PDF Tools Row */}
+          <View style={styles.quickActionsContainer}>
+            <TouchableOpacity style={[styles.quickToolBtn, { backgroundColor: themeColors.card }]} onPress={handleMergePdfs}>
+              <Text style={{ fontSize: 18 }}>📑</Text>
+              <Text style={[styles.quickToolText, { color: themeColors.textPrimary }]}>Merge PDFs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.quickToolBtn, { backgroundColor: themeColors.card }]} onPress={handleRotatePdf}>
+              <Text style={{ fontSize: 18 }}>🔄</Text>
+              <Text style={[styles.quickToolText, { color: themeColors.textPrimary }]}>Rotate 90°</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: themeColors.textPrimary }]}>Recent Documents</Text>
+            <Text style={[styles.sectionCount, { color: themeColors.textMuted }]}>{recents.length}</Text>
+          </View>
+
+          <FlatList
+            data={recents}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.docItem, { backgroundColor: themeColors.card, borderColor: themeColors.cardBorder }]}
+                onPress={() => openPdfViewer(item.uri, item.name)}
+              >
+                <View style={styles.pdfBadge}>
+                  <Text style={styles.pdfBadgeText}>PDF</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.docName, { color: themeColors.textPrimary }]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={[styles.docMeta, { color: themeColors.textMuted }]}>
+                    {new Date(item.timestamp).toLocaleDateString()} • {item.size ? `${(item.size / 1024).toFixed(0)} KB` : 'Local'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => handleShare(item.uri, item.name)} style={styles.actionIconBtn}>
+                  <Text style={{ color: themeColors.accent, fontSize: 16 }}>↗</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteRecentItem(item.uri)} style={styles.actionIconBtn}>
+                  <Text style={{ color: '#ef4444', fontSize: 16 }}>✕</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={{ fontSize: 40, marginBottom: 8 }}>📄</Text>
+                <Text style={[styles.emptyText, { color: themeColors.textPrimary }]}>No documents found</Text>
+                <Text style={[styles.emptySub, { color: themeColors.textMuted }]}>
+                  Scan physical documents or pick a PDF from internal storage.
+                </Text>
+              </View>
+            }
+          />
+        </View>
+      )}
+
+      {/* SCANNER SCREEN */}
+      {currentScreen === 'scan' && (
+        <View style={{ flex: 1 }}>
+          <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.cardBorder }]}>
+            <TouchableOpacity onPress={() => setCurrentScreen('home')}>
+              <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '700' }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: themeColors.textPrimary }]}>Multi-Page Scanner</Text>
+            <View style={{ width: 45 }} />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={[
+                styles.textInput,
+                { backgroundColor: themeColors.card, borderColor: themeColors.cardBorder, color: themeColors.textPrimary },
+              ]}
+              placeholder="Document Title (e.g., Receipt_May)"
+              placeholderTextColor={themeColors.textMuted}
+              value={scanDocName}
+              onChangeText={setScanDocName}
+            />
+          </View>
+
+          <View style={styles.scannerActions}>
+            <TouchableOpacity style={[styles.scannerBtn, { backgroundColor: themeColors.accent }]} onPress={handleCameraCapture}>
+              <Text style={styles.scannerBtnText}>📷 Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.scannerBtn, { backgroundColor: themeColors.accentSec }]} onPress={handleGalleryPick}>
+              <Text style={styles.scannerBtnText}>🖼️ Pick Gallery</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={scannedPages}
+            numColumns={3}
+            keyExtractor={(_, index) => index.toString()}
+            contentContainerStyle={{ padding: 12, flexGrow: 1 }}
+            renderItem={({ item, index }) => (
+              <View style={[styles.thumbCard, { backgroundColor: themeColors.card, borderColor: themeColors.cardBorder }]}>
+                <Image source={{ uri: item }} style={styles.thumbImage} />
+                <TouchableOpacity
+                  style={styles.thumbDelete}
+                  onPress={() => setScannedPages(scannedPages.filter((_, i) => i !== index))}
+                >
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>✕</Text>
+                </TouchableOpacity>
+                <View style={styles.pagePill}>
+                  <Text style={{ color: '#fff', fontSize: 10 }}>P.{index + 1}</Text>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>No Pages Captured</Text>
+                <Text style={[styles.emptySub, { color: themeColors.textMuted }]}>
+                  Capture photos or pick images to synthesize your PDF.
+                </Text>
+              </View>
+            }
+          />
+
+          {scannedPages.length > 0 && (
+            <View style={[styles.footer, { backgroundColor: themeColors.headerBg, borderTopColor: themeColors.cardBorder }]}>
+              <TouchableOpacity style={styles.compileBtn} onPress={compilePagesToPdf}>
+                <Text style={styles.compileBtnText}>Save {scannedPages.length} Pages to PDF</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* PDF VIEWER SCREEN */}
+      {currentScreen === 'viewer' && viewerFile && (
+        <View style={{ flex: 1 }}>
+          <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.cardBorder }]}>
+            <TouchableOpacity onPress={() => setCurrentScreen('home')}>
+              <Text style={{ color: themeColors.accent, fontSize: 15, fontWeight: '700' }}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: themeColors.textPrimary }]} numberOfLines={1}>
+              {viewerFile.title}
+            </Text>
+            <TouchableOpacity onPress={() => handleShare(viewerFile.uri, viewerFile.title)}>
+              <Text style={{ color: themeColors.accent, fontSize: 15, fontWeight: '700' }}>Share</Text>
+            </TouchableOpacity>
+          </View>
+
+          <WebView
+            originWhitelist={['*']}
+            source={{
+              html: `
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, minimum-scale=1.0" />
+                    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+                    <style>
+                      * { box-sizing: border-box; margin: 0; padding: 0; }
+                      body { background-color: ${themeColors.bg}; display: flex; flex-direction: column; align-items: center; padding: 12px 0; }
+                      .pdf-page { max-width: 96vw; height: auto; margin-bottom: 14px; border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); background:#fff; }
+                    </style>
+                  </head>
+                  <body>
+                    <div id="pdf-container"></div>
+                    <script>
+                      const rawData = atob("${viewerFile.base64 || ''}");
+                      const uint8Array = new Uint8Array(rawData.length);
+                      for (let i = 0; i < rawData.length; i++) { uint8Array[i] = rawData.charCodeAt(i); }
+
+                      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                      pdfjsLib.getDocument({ data: uint8Array }).promise.then(function(pdf) {
+                        const container = document.getElementById('pdf-container');
+                        for (let p = 1; p <= pdf.numPages; p++) {
+                          pdf.getPage(p).then(function(page) {
+                            const viewport = page.getViewport({ scale: 1.5 });
+                            const canvas = document.createElement('canvas');
+                            canvas.className = 'pdf-page';
+                            const ctx = canvas.getContext('2d');
+                            canvas.height = viewport.height;
+                            canvas.width = viewport.width;
+                            container.appendChild(canvas);
+                            page.render({ canvasContext: ctx, viewport: viewport });
+                          });
+                        }
+                      }).catch(function() {
+                        document.body.innerHTML = '<div style="color:red;padding:20px;text-align:center;">Failed to render PDF.</div>';
+                      });
+                    </script>
+                  </body>
+                </html>
+              `,
+            }}
+            style={{ flex: 1, backgroundColor: themeColors.bg }}
+            scalesPageToFit={true}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  screen: { flex: 1, backgroundColor: BG },
-  darkScreen: { backgroundColor: '#0C1320' },
-  homeContent: { paddingHorizontal: 20, paddingBottom: 36 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoMark: { width: 64, height: 64, borderRadius: 18, backgroundColor: '#1264D9', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', elevation: 3, shadowOpacity: 0.14, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  logoMarkSmall: { width: 46, height: 46, borderRadius: 14 },
-  logoPaper: { width: 42, height: 48, backgroundColor: '#fff', borderRadius: 5, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 7, transform: [{ rotate: '-5deg' }] },
-  logoPdf: { color: '#D42C2C', fontSize: 8, fontWeight: '900' },
-  logoBlueStrip: { position: 'absolute', left: 7, right: 7, bottom: 10, height: 7, borderRadius: 4, backgroundColor: '#0D3A86' },
-  logoWord: { position: 'absolute', bottom: 3, color: '#fff', fontWeight: '900', fontSize: 9 },
-  kuntal: { color: NAVY, fontWeight: '900', fontSize: 14, letterSpacing: 4 },
-  documents: { color: NAVY, fontWeight: '900', fontSize: 33, letterSpacing: -1.2, lineHeight: 35 },
-  tagline: { color: '#6E7788', fontSize: 17, marginTop: 8, marginBottom: 20 },
-  settingsButton: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E3E6EC', alignItems: 'center', justifyContent: 'center' },
-  settingsGlyph: { fontSize: 28, color: '#192236' },
-  searchBox: { height: 58, borderRadius: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E0E4EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 22 },
-  searchGlyph: { fontSize: 30, color: '#8D96A7', marginRight: 7, marginTop: -4 },
-  searchInput: { flex: 1, fontSize: 17, color: NAVY },
-  clear: { fontSize: 25, color: '#7D8797' },
-  smartBanner: { height: 142, backgroundColor: NAVY, borderRadius: 30, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', marginBottom: 28 },
-  smartGlow: { position: 'absolute', width: 230, height: 230, right: -40, top: -70, borderRadius: 120, backgroundColor: '#243D73', opacity: 0.75 },
-  scanLine: { position: 'absolute', width: 4, height: 110, right: 74, backgroundColor: '#8FB2FF', borderRadius: 3 },
-  smartIconBox: { width: 72, height: 72, borderRadius: 26, backgroundColor: '#223A6D', alignItems: 'center', justifyContent: 'center', marginRight: 18 },
-  smartIcon: { color: '#fff', fontSize: 33 },
-  smartTitle: { color: '#fff', fontWeight: '900', fontSize: 29, letterSpacing: -0.7 },
-  smartSubtitle: { color: '#CBD4E7', fontSize: 16, lineHeight: 21, marginTop: 3, maxWidth: 245 },
-  chevron: { color: '#fff', fontSize: 42, fontWeight: '300', marginLeft: 4 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 },
-  sectionTitle: { fontSize: 28, fontWeight: '900', color: NAVY, letterSpacing: -0.7 },
-  sectionCount: { color: '#6E7788', fontSize: 16 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  toolCard: { width: (SCREEN_WIDTH - 52) / 2, minHeight: 188, backgroundColor: CARD, borderRadius: 25, borderWidth: 1, borderColor: '#E4E8EF', padding: 18, marginBottom: 12, justifyContent: 'flex-start', shadowColor: '#0D1A33', shadowOpacity: 0.035, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
-  darkCard: { backgroundColor: '#121C2C', borderColor: '#1D2A3F' },
-  pressed: { opacity: 0.88, transform: [{ scale: 0.985 }] },
-  toolIcon: { width: 54, height: 54, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
-  toolIconText: { color: '#2F6BFF', fontSize: 24, fontWeight: '900' },
-  toolTitle: { color: NAVY, fontWeight: '900', fontSize: 20, letterSpacing: -0.4 },
-  toolSubtitle: { color: '#747E90', fontSize: 14.5, lineHeight: 19, marginTop: 7 },
-  darkText: { color: '#F4F7FF' },
-  darkMuted: { color: '#8995AA' },
-  sectionHeaderRecent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 12 },
-  sectionTitleSmall: { fontSize: 21, fontWeight: '900', color: NAVY },
-  emptyCard: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E4E8EF', borderRadius: 22, padding: 22, alignItems: 'center' },
-  emptyIcon: { fontSize: 28, color: ACCENT, marginBottom: 8 },
-  emptyTitle: { color: NAVY, fontWeight: '800', fontSize: 17 },
-  emptyText: { color: MUTED, fontSize: 14, textAlign: 'center', marginTop: 6, lineHeight: 20 },
-  recentRow: { minHeight: 68, borderRadius: 18, borderWidth: 1, borderColor: '#E4E8EF', backgroundColor: '#fff', padding: 11, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 9 },
-  recentBadge: { width: 45, height: 45, borderRadius: 13, backgroundColor: '#EAF1FF', alignItems: 'center', justifyContent: 'center' },
-  recentBadgeText: { color: ACCENT, fontSize: 11, fontWeight: '900' },
-  recentName: { color: NAVY, fontSize: 15, fontWeight: '800' },
-  recentDate: { color: '#8791A1', marginTop: 4, fontSize: 12 },
-  recentArrow: { color: '#99A3B3', fontSize: 28 },
-  loadingScreen: { flex: 1, backgroundColor: BG, alignItems: 'center', justifyContent: 'center' },
-  blackScreen: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
-  cameraScreen: { flex: 1, backgroundColor: '#000' },
-  cameraShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' },
-  cameraOverlay: { flex: 1, justifyContent: 'space-between' },
-  cameraTopRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 8 },
-  cameraCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(0,0,0,0.42)', alignItems: 'center', justifyContent: 'center' },
-  cameraCircleText: { color: '#fff', fontSize: 25 },
-  cameraTitleWrap: { flex: 1, alignItems: 'center' },
-  cameraTitle: { color: '#fff', fontSize: 19, fontWeight: '900' },
-  cameraHint: { color: '#D9DFE9', fontSize: 12, marginTop: 3 },
-  frameArea: { width: SCREEN_WIDTH - 58, height: SCREEN_WIDTH * 1.18, maxHeight: 540, alignSelf: 'center', borderRadius: 18, position: 'relative', justifyContent: 'center', alignItems: 'center' },
-  cornerTL: { position: 'absolute', left: 0, top: 0, width: 34, height: 34, borderLeftWidth: 4, borderTopWidth: 4, borderColor: '#fff', borderTopLeftRadius: 12 },
-  cornerTR: { position: 'absolute', right: 0, top: 0, width: 34, height: 34, borderRightWidth: 4, borderTopWidth: 4, borderColor: '#fff', borderTopRightRadius: 12 },
-  cornerBL: { position: 'absolute', left: 0, bottom: 0, width: 34, height: 34, borderLeftWidth: 4, borderBottomWidth: 4, borderColor: '#fff', borderBottomLeftRadius: 12 },
-  cornerBR: { position: 'absolute', right: 0, bottom: 0, width: 34, height: 34, borderRightWidth: 4, borderBottomWidth: 4, borderColor: '#fff', borderBottomRightRadius: 12 },
-  scanBeam: { width: '86%', height: 2, backgroundColor: '#70A2FF', opacity: 0.8 },
-  frameHint: { position: 'absolute', bottom: 18, color: '#fff', backgroundColor: 'rgba(0,0,0,0.38)', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, fontSize: 12 },
-  cameraBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 34, paddingBottom: 18 },
-  thumbnailBox: { width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  thumbnail: { width: '100%', height: '100%' },
-  thumbnailEmpty: { color: '#fff', fontWeight: '900' },
-  shutterOuter: { width: 82, height: 82, borderRadius: 41, borderWidth: 5, borderColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
-  shutterInner: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  shutterDot: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#EAF1FF', borderWidth: 2, borderColor: ACCENT },
-  modeButton: { width: 70, height: 52, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.42)', alignItems: 'center', justifyContent: 'center' },
-  modeButtonText: { color: '#fff', fontWeight: '900', fontSize: 11 },
-  finishBar: { position: 'absolute', left: 18, right: 18, bottom: 18, backgroundColor: 'rgba(12,18,30,0.94)', borderRadius: 18, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  finishSecondary: { color: '#fff', padding: 12, fontWeight: '800' },
-  finishButton: { backgroundColor: ACCENT, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 12 },
-  finishButtonText: { color: '#fff', fontWeight: '900' },
-  permissionScreen: { flex: 1, backgroundColor: BG, alignItems: 'center', justifyContent: 'center', padding: 30 },
-  permissionIcon: { fontSize: 48, color: ACCENT },
-  permissionTitle: { fontSize: 25, fontWeight: '900', color: NAVY, marginTop: 16 },
-  permissionText: { color: MUTED, textAlign: 'center', lineHeight: 22, marginTop: 8, marginBottom: 24 },
-  primaryButton: { backgroundColor: ACCENT, borderRadius: 16, paddingHorizontal: 25, paddingVertical: 14, minWidth: 180, alignItems: 'center' },
-  primaryButtonText: { color: '#fff', fontWeight: '900', fontSize: 16 },
-  secondaryButton: { padding: 14, marginTop: 8 },
-  secondaryButtonText: { color: MUTED, fontWeight: '800' },
-  viewerScreen: { flex: 1, backgroundColor: '#EEF1F6' },
-  viewerHeader: { height: Platform.OS === 'android' ? 76 : 96, backgroundColor: '#101827', paddingHorizontal: 12, paddingTop: Platform.OS === 'android' ? 18 : 42, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  viewerBack: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1A2639' },
-  viewerBackText: { color: '#fff', fontSize: 34, marginTop: -4 },
-  viewerTitle: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  viewerMeta: { color: '#8D99AE', fontSize: 11, marginTop: 3 },
-  viewerAction: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#1A2639', alignItems: 'center', justifyContent: 'center' },
-  viewerActionText: { color: '#fff', fontSize: 25 },
-  pdfStage: { flex: 1, backgroundColor: '#EEF1F6', paddingHorizontal: 4, paddingVertical: 4 },
-  pdf: { flex: 1, backgroundColor: '#EEF1F6' },
-  pdfLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF1F6' },
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.42)' },
-  settingsSheet: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 28 },
-  sheetHandle: { width: 42, height: 5, borderRadius: 3, backgroundColor: '#D7DCE5', alignSelf: 'center', marginBottom: 16 },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  sheetTitle: { color: NAVY, fontSize: 24, fontWeight: '900' },
-  sheetClose: { color: NAVY, fontSize: 28 },
-  settingRow: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#E8EBF0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingTitle: { color: NAVY, fontSize: 16, fontWeight: '800' },
-  settingSub: { color: MUTED, fontSize: 12, marginTop: 4 },
-  danger: { color: '#D74C4C', fontWeight: '900' },
-  aboutBox: { marginTop: 18, padding: 16, borderRadius: 18, backgroundColor: '#F4F6FA' },
-  aboutTitle: { color: NAVY, fontWeight: '900', fontSize: 15 },
-  aboutText: { color: MUTED, fontSize: 12, marginTop: 5 },
+  container: { flex: 1 },
+  header: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  brandSub: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  brandTitle: { fontSize: 22, fontWeight: '800' },
+  headerTitle: { fontSize: 16, fontWeight: '700', maxWidth: '60%' },
+  themeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  toolsRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, marginTop: 14 },
+  toolCard: { flex: 1, borderRadius: 12, padding: 14, minHeight: 100, justifyContent: 'space-between' },
+  toolIcon: { fontSize: 24 },
+  toolTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  toolSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
+  quickActionsContainer: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, marginTop: 12 },
+  quickToolBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  quickToolText: { fontSize: 13, fontWeight: '700' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+  sectionCount: { fontSize: 14, fontWeight: '600' },
+  listContainer: { paddingHorizontal: 16, paddingBottom: 20, flexGrow: 1 },
+  docItem: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1 },
+  pdfBadge: { width: 38, height: 38, borderRadius: 6, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
+  pdfBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
+  docName: { fontSize: 14, fontWeight: '600' },
+  docMeta: { fontSize: 11, marginTop: 2 },
+  actionIconBtn: { padding: 8 },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
+  emptyText: { fontSize: 16, fontWeight: '700' },
+  emptySub: { fontSize: 12, textAlign: 'center', marginTop: 4, paddingHorizontal: 30 },
+  inputContainer: { paddingHorizontal: 16, marginTop: 12 },
+  textInput: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, fontSize: 14 },
+  scannerActions: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, marginTop: 12 },
+  scannerBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  scannerBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
+  thumbCard: { position: 'relative', margin: 4, flex: 1 / 3, aspectRatio: 0.72, borderWidth: 1, borderRadius: 6 },
+  thumbImage: { width: '100%', height: '100%', borderRadius: 5 },
+  thumbDelete: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.95)',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pagePill: { position: 'absolute', bottom: 4, left: 4, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 4, borderRadius: 3 },
+  footer: { padding: 16, borderTopWidth: 1 },
+  compileBtn: { backgroundColor: '#10b981', paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+  compileBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(9, 13, 22, 0.85)',
+    zIndex: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingOverlayText: { color: '#f8fafc', marginTop: 12, fontSize: 14, fontWeight: '600' },
 });
