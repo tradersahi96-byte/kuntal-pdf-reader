@@ -1,7 +1,6 @@
 name: Build Kuntal Documents APK
 
 
-
 on:
   workflow_dispatch:
   push:
@@ -21,19 +20,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
+          cache: npm
 
       - name: 📦 Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 🚀 Setup EAS CLI
-        run: npm install -g eas-cli
-
       - name: 🔑 Verify EAS authentication
-        run: eas whoami
+        run: npx eas-cli whoami
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: 🔨 Build Android APK with EAS
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+        run: npx eas-cli build --platform android --profile preview --non-interactive --no-wait
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
