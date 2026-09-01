@@ -1,43 +1,39 @@
 name: Build Kuntal Documents APK
 
+
+
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - master
 
 jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: 🏗 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          # NOTE: no `cache: npm` here on purpose. actions/setup-node's cache
-          # option requires a committed package-lock.json, and fails with
-          # "Dependencies lock file is not found" if one is missing.
-          # Once you run `npm install` locally once and commit the generated
-          # package-lock.json, you can safely add `cache: npm` back above
-          # for faster installs.
+          node-version: 20.x
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Install EAS CLI
-        run: npm install --global eas-cli@latest
+      - name: 🚀 Setup EAS CLI
+        run: npm install -g eas-cli
 
-      - name: Verify EAS authentication
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: 🔑 Verify EAS authentication
         run: eas whoami
-
-      - name: Build Android APK with EAS
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --platform android --profile preview --non-interactive
+
+      - name: 🔨 Build Android APK with EAS
+        run: eas build --platform android --profile preview --non-interactive --no-wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
