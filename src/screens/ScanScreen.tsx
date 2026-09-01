@@ -26,7 +26,7 @@ export const ScanScreen = ({ navigation }: any) => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Camera permission is required to capture documents.');
+        Alert.alert('Permission Denied', 'Camera permission is required.');
         return;
       }
 
@@ -38,8 +38,8 @@ export const ScanScreen = ({ navigation }: any) => {
       if (!result.canceled && result.assets && result.assets[0]?.uri) {
         setPages((prev) => [...prev, result.assets[0].uri]);
       }
-    } catch (e) {
-      Alert.alert('Camera Error', 'Could not access the camera hardware.');
+    } catch {
+      Alert.alert('Camera Error', 'Could not open camera.');
     }
   };
 
@@ -47,7 +47,7 @@ export const ScanScreen = ({ navigation }: any) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Photos permission is required to select images.');
+        Alert.alert('Permission Denied', 'Photo gallery permission is required.');
         return;
       }
 
@@ -57,72 +57,65 @@ export const ScanScreen = ({ navigation }: any) => {
       });
 
       if (!result.canceled && result.assets) {
-        const selectedUris = result.assets.map((asset) => asset.uri);
-        setPages((prev) => [...prev, ...selectedUris]);
+        const uris = result.assets.map((a) => a.uri);
+        setPages((prev) => [...prev, ...uris]);
       }
-    } catch (e) {
-      Alert.alert('Gallery Error', 'Could not access device photos.');
+    } catch {
+      Alert.alert('Gallery Error', 'Could not access photo library.');
     }
   };
 
   const handleGeneratePdf = async () => {
     if (pages.length === 0) {
-      Alert.alert('Empty Scan', 'Please add at least one page before generating a PDF.');
+      Alert.alert('No Pages', 'Please add at least one scanned page.');
       return;
     }
 
     setLoading(true);
     try {
-      const defaultName = `Kuntal_Doc_${Date.now()}`;
-      const name = documentTitle.trim().length > 0 ? documentTitle : defaultName;
+      const name = documentTitle.trim().length > 0 ? documentTitle : `Kuntal_Doc_${Date.now()}`;
       const pdfUri = await generatePdfFromImages(pages, name);
 
-      navigation.replace('PdfViewer', {
-        uri: pdfUri,
-        title: `${name}.pdf`,
-      });
+      navigation.replace('PdfViewer', { uri: pdfUri, title: `${name}.pdf` });
     } catch (err: any) {
-      Alert.alert('Generation Error', err.message || 'Failed to create PDF from scanned pages.');
+      Alert.alert('Error', err.message || 'Failed to generate PDF document.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.headerBg} />
-      
-      {/* Header */}
+
       <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.cardBorder }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
           <Text style={[styles.cancelText, { color: colors.danger }]}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Multi-Page Scanner</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Document Scanner</Text>
         <View style={{ width: 45 }} />
       </View>
 
-      {/* Document Name Input */}
       <View style={styles.inputSection}>
         <TextInput
           style={[
             styles.textInput,
             { backgroundColor: colors.card, borderColor: colors.cardBorder, color: colors.textPrimary },
           ]}
-          placeholder="Document name (e.g. Scanned_Invoice)"
+          placeholder="Document name (e.g., Contract_July)"
           placeholderTextColor={colors.textMuted}
           value={documentTitle}
           onChangeText={setDocumentTitle}
         />
       </View>
 
-      {/* Action Buttons */}
       <View style={styles.actionsBar}>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: colors.accent }]}
           onPress={capturePhoto}
           activeOpacity={0.8}
         >
-          <Text style={styles.actionBtnText}>📷 Take Photo</Text>
+          <Text style={styles.actionBtnText}>📷 Camera Capture</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -134,7 +127,6 @@ export const ScanScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      {/* Pages Grid */}
       <FlatList
         data={pages}
         numColumns={3}
@@ -158,13 +150,12 @@ export const ScanScreen = ({ navigation }: any) => {
           <View style={styles.emptyGrid}>
             <Text style={[styles.emptyGridTitle, { color: colors.textSecondary }]}>No Pages Captured</Text>
             <Text style={[styles.emptyGridSub, { color: colors.textMuted }]}>
-              Use the camera or gallery buttons above to compile pages for this document.
+              Use the camera or gallery buttons above to add pages to your document.
             </Text>
           </View>
         }
       />
 
-      {/* Footer Generate CTA */}
       {pages.length > 0 && (
         <View style={[styles.footer, { backgroundColor: colors.headerBg, borderTopColor: colors.cardBorder }]}>
           <TouchableOpacity
@@ -177,7 +168,7 @@ export const ScanScreen = ({ navigation }: any) => {
               <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.generateBtnText}>
-                Save as PDF ({pages.length} {pages.length === 1 ? 'Page' : 'Pages'})
+                Compile {pages.length} Page{pages.length > 1 ? 's' : ''} to PDF
               </Text>
             )}
           </TouchableOpacity>
