@@ -23,7 +23,11 @@
     "pdf-lib": "1.17.1",
     "@config-plugins/react-native-pdf": "11.0.0",
     "@config-plugins/react-native-blob-util": "11.0.0",
-    "react-native-blob-util": "0.21.2",
+    "react-native-blob-util": "^0.24.10",
     "@infinitered/react-native-mlkit-text-recognition": "4.0.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "babel-preset-expo": "~13.0.0"
   }
 }

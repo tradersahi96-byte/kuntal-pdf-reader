@@ -2,12 +2,13 @@
   "expo": {
     "name": "Kuntal Documents",
     "slug": "kuntal-documents",
-    "version": "9.2.0",
+    "version": "9.2.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./icon.png",
     "android": {
       "package": "com.kuntal.documents",
+      "versionCode": 1,
       "permissions": [
         "CAMERA"
       ],
@@ -22,7 +23,7 @@
       "@config-plugins/react-native-pdf"
     ],
     "extra": {
-      "versionName": "V9.2",
+      "versionName": "V9.2.1",
       "features": [
         "native-pdf-viewer",
         "scanner-auto-manual",
@@ -43,8 +44,12 @@
         "expo-sdk-53-pinned-dependencies",
         "new-architecture-disabled-for-native-pdf-compatibility",
         "explicit-babel-config"
-      ]
+      ],
+      "eas": {
+        "projectId": "a570a555-2aa1-4d13-9b57-3069bca6c664"
+      }
     },
-    "newArchEnabled": false
+    "newArchEnabled": false,
+    "owner": "yashjat"
   }
 }
