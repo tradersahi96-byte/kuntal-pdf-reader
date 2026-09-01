@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Kuntal Documents",
-    "slug": "kuntal-documents",
+    "slug": "kuntal-pdf-reader",
     "owner": "yashjat",
     "version": "3.0.0",
     "orientation": "portrait",
@@ -11,10 +11,6 @@
       "image": "./icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#090d16"
-    "splash": {
-  "image": "./icon.png",
-  "resizeMode": "contain",
-  "backgroundColor": "#090d16"
     },
     "assetBundlePatterns": [
       "**/*"
