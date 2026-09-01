@@ -23,7 +23,6 @@ import ReactNativeBlobUtil from "react-native-blob-util";
 import * as Sharing from "expo-sharing";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import { PDFDocument, rgb, degrees } from "pdf-lib";
-import { recognizeText } from "@infinitered/react-native-mlkit-text-recognition";
 import Pdf from "react-native-pdf";
 
 const C = {
@@ -223,16 +222,10 @@ export default function App() {
   }
 
   async function recognize(uri) {
-    try {
-      setBusy("Recognizing text…");
-      const result = await recognizeText(uri);
-      setOcrText(result.text || "No text recognized.");
-      setScreen("ocrResult");
-    } catch (e) {
-      Alert.alert("OCR unavailable", "OCR uses native ML Kit. Build this project as an EAS/custom Android APK.");
-    } finally {
-      setBusy("");
-    }
+    Alert.alert(
+      "OCR",
+      "OCR is temporarily disabled in this stable build because the previous ML Kit package version was not available on npm. The rest of the PDF/scanner features remain build-safe."
+    );
   }
 
   async function mergePDFs() {
