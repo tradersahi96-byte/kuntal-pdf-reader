@@ -46,7 +46,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "preserve-your-existing-eas-project-id"
+        "projectId": "INSERT_YOUR_EXPO_EAS_PROJECT_ID_HERE"
       }
     }
   }
